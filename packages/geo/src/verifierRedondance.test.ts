@@ -57,34 +57,40 @@ const mission = (maxDrones = 3, dispo = true) =>
     ],
   });
 
+/** Fixe le nombre de drones voulus par zone (sans repasser par zod, pour tester les saisies invalides). */
+const avec = (m: Mission, r: Record<string, number>): Mission => ({
+  ...m,
+  priorityZones: m.priorityZones.map((z) => ({ ...z, redundancy: r[z.id] ?? z.redundancy })),
+});
+
 describe('verifierRedondance', () => {
   it('rien de demandé : aucun message', () => {
-    expect(verifierRedondance(mission(), catalogue, {})).toEqual([]);
+    expect(verifierRedondance(avec(mission(), {}), catalogue)).toEqual([]);
   });
 
   it('demande possible : aucun message', () => {
-    expect(verifierRedondance(mission(), catalogue, { etang: 3 })).toEqual([]);
+    expect(verifierRedondance(avec(mission(), { etang: 3 }), catalogue)).toEqual([]);
   });
 
   it("plus de drones que l'arrêté n'en autorise", () => {
-    const [m] = verifierRedondance(mission(2), catalogue, { etang: 3 });
+    const [m] = verifierRedondance(avec(mission(2), { etang: 3 }), catalogue);
     expect(m).toBe("Étang : 3 drones voulus, l'arrêté en autorise 2 au total.");
   });
 
   it('pas assez de drones avec les capacités exigées : le message les nomme', () => {
-    const [m] = verifierRedondance(mission(), catalogue, { lisiere: 2 });
+    const [m] = verifierRedondance(avec(mission(), { lisiere: 2 }), catalogue);
     expect(m).toBe(
       'Lisière nord : 2 drones voulus avec caméra thermique, zoom ×50, la mission en a 1 disponible(s) (r1).',
     );
   });
 
   it('un couple indisponible ne compte pas', () => {
-    const [m] = verifierRedondance(mission(3, false), catalogue, { lisiere: 2 });
+    const [m] = verifierRedondance(avec(mission(3, false), { lisiere: 2 }), catalogue);
     expect(m).toContain('la mission en a 0 disponible(s).');
   });
 
   it('saisie invalide', () => {
-    expect(verifierRedondance(mission(), catalogue, { etang: 1.5 })[0]).toContain('invalide');
-    expect(verifierRedondance(mission(), catalogue, { etang: 0 })[0]).toContain('invalide');
+    expect(verifierRedondance(avec(mission(), { etang: 1.5 }), catalogue)[0]).toContain('invalide');
+    expect(verifierRedondance(avec(mission(), { etang: 0 }), catalogue)[0]).toContain('invalide');
   });
 });

@@ -1,5 +1,12 @@
-import type { CoverageGeometryBuilder, Grid, LngLat, MultiPolygonGeom } from '@aeris/shared';
+import type {
+  CoverageGeometryBuilder,
+  CoverageLayers,
+  Grid,
+  LngLat,
+  MultiPolygonGeom,
+} from '@aeris/shared';
 import { coverageCounts } from './metrics';
+import { presenceAuPireMoment } from './presence';
 import { indexerGrille, type IndexGrille } from './voisinage';
 
 /** Rectangle de cellules, bornes incluses. */
@@ -68,14 +75,30 @@ function anneau(index: IndexGrille, b: Bloc): LngLat[] {
   ];
 }
 
-export const coverageGeometry: CoverageGeometryBuilder = (grid, assignments) => {
+export const coverageGeometry: CoverageGeometryBuilder = (grid, assignments, opts = {}) => {
   const index = indexerGrille(grid);
   const counts = coverageCounts(grid, assignments, index);
   const couvrable = (id: number) => !grid.cells[id].forbidden;
-  return {
+  const layers: CoverageLayers = {
     phase: grid.phase,
     covered: fusionner(grid, index, (id) => couvrable(id) && counts[id] > 0),
     gaps: fusionner(grid, index, (id) => couvrable(id) && counts[id] === 0),
     overlap: fusionner(grid, index, (id) => couvrable(id) && counts[id] > 1),
   };
+  // Couches de redondance seulement si une zone en demande : la carte reste légère sinon.
+  if (!grid.cells.some((c) => c.redundancy >= 2)) return layers;
+  const capables = presenceAuPireMoment(
+    grid,
+    index,
+    assignments,
+    (a, cell) => !opts.canServe || opts.canServe(a.resourceId, cell),
+  );
+  const r = (id: number) => grid.cells[id].redundancy;
+  layers.redundancyMissing = fusionner(
+    grid,
+    index,
+    (id) => couvrable(id) && r(id) >= 2 && capables[id] < r(id),
+  );
+  layers.superfluousOverlap = fusionner(grid, index, (id) => couvrable(id) && counts[id] > r(id));
+  return layers;
 };

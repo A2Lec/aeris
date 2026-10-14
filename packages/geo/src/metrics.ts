@@ -33,6 +33,10 @@ export const computeMetrics: MetricsEngine = (grid, assignments, opts = {}) => {
   let prioServed = 0;
   let wTotal = 0;
   let wServed = 0;
+  let useful = 0;
+  let superfluous = 0;
+  let demanding = 0;
+  let met = 0;
   for (const cell of grid.cells) {
     if (cell.forbidden) {
       forbidden++;
@@ -48,6 +52,14 @@ export const computeMetrics: MetricsEngine = (grid, assignments, opts = {}) => {
       prioTotal++;
       if (served[cell.id] > 0) prioServed++;
     }
+    // Redondance : n drones vus au pire moment, comparés aux r voulus sur la cellule.
+    const r = cell.redundancy;
+    if (counts[cell.id] >= 2 && counts[cell.id] <= r) useful++;
+    if (counts[cell.id] > r) superfluous++;
+    if (r >= 2) {
+      demanding++;
+      if (served[cell.id] >= r) met++;
+    }
   }
 
   const area = grid.cellAreaM2;
@@ -60,5 +72,8 @@ export const computeMetrics: MetricsEngine = (grid, assignments, opts = {}) => {
     uncoveredAreaM2: (coverable - covered) * area,
     forbiddenAreaM2: forbidden * area,
     communes: [], // TODO(P3) : geo.api.gouv.fr/communes?lat=&lon= sur les cellules couvertes
+    usefulOverlap: covered ? useful / covered : 0,
+    superfluousOverlap: covered ? superfluous / covered : 0,
+    redundancyMet: demanding ? met / demanding : 1,
   };
 };

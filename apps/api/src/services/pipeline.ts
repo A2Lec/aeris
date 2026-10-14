@@ -50,6 +50,7 @@ export function coverageFor(mission: Mission, phase: number, assignments: Assign
   return coverageGeometry(
     buildGrid(mission, phase),
     assignments.filter((a) => a.phase === phase),
+    { canServe: canServeFor(mission) },
   );
 }
 

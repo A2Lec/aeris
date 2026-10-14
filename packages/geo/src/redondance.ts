@@ -1,6 +1,6 @@
 /**
- * Redondance : une zone prioritaire peut exiger r drones en même temps (r fixé par
- * l'utilisateur, 1 par défaut). Sur chaque cellule on compare r au nombre n de drones qui la
+ * Redondance : une zone prioritaire peut exiger r drones en même temps
+ * (`PriorityZone.redundancy`, 1 par défaut ; `buildGrid` le reporte dans `cell.redundancy`). Sur chaque cellule on compare r au nombre n de drones qui la
  * voient en même temps, au pire moment de la phase (voir presence.ts) : deux drones qui se
  * relaient par créneaux ne comptent pas comme deux.
  *   - chevauchement utile    : 2 ≤ n ≤ r (les drones voulus en plus du premier) ;
@@ -8,9 +8,9 @@
  *   - redondance atteinte    : n drones capables ≥ r, sur les cellules où r ≥ 2 ;
  *   - couverture pondérée    : crédit partiel min(n, r) / r du poids de la cellule.
  * Avec r = 1 partout et sans créneaux, on retrouve exactement overlap et weightedCoverage de
- * computeMetrics.
+ * computeMetrics. computeMetrics remplit lui-même usefulOverlap, superfluousOverlap et
+ * redundancyMet ; seule la couverture à crédit partiel est propre à ce module.
  */
-import { booleanPointInPolygon } from '@turf/turf';
 import {
   PRIORITY_WEIGHTS,
   meetsRequirement,
@@ -23,36 +23,8 @@ import {
   type Requirement,
 } from '@aeris/shared';
 import { fusionner } from './coverage';
-import { zoneActive } from './grid';
 import { presenceAuPireMoment } from './presence';
 import { indexerGrille } from './voisinage';
-
-// TODO(P1) : quand PriorityZone.redundancy et Cell.redundancy existeront dans @aeris/shared,
-// buildGrid remplira cell.redundancy, `redondanceDesCellules` disparaîtra, et les champs de
-// `IndicateursRedondance` / `CouchesRedondance` rejoindront Metrics / CoverageLayers.
-
-/** Nombre de drones voulus par zone prioritaire (id de zone → r). Zone absente = 1. */
-export type RedondanceParZone = Record<string, number>;
-
-/** r de chaque cellule (index = cell.id) : le plus grand r des zones actives qui la contiennent. */
-export function redondanceDesCellules(
-  mission: Mission,
-  grid: Grid,
-  redondances: RedondanceParZone,
-): Uint8Array {
-  const r = new Uint8Array(grid.cells.length).fill(1);
-  const zones = mission.priorityZones.filter(
-    (z) => zoneActive(z, grid.phase) && (redondances[z.id] ?? 1) > 1,
-  );
-  for (const cell of grid.cells) {
-    for (const z of zones) {
-      if (booleanPointInPolygon(cell.center, z.geometry)) {
-        r[cell.id] = Math.max(r[cell.id], Math.min(255, Math.floor(redondances[z.id])));
-      }
-    }
-  }
-  return r;
-}
 
 export interface IndicateursRedondance {
   /** Part de la surface couverte vue par 2 à r drones en même temps (chevauchement voulu). 0..1. */
@@ -61,8 +33,8 @@ export interface IndicateursRedondance {
   superfluousOverlap: number;
   /** Part des cellules exigeant r ≥ 2 qui ont r drones capables en même temps. 1 s'il n'y en a pas. */
   redundancyMet: number;
-  /** Couverture pondérée avec crédit partiel min(n, r) / r. 0..1. */
-  weightedCoverage: number;
+  /** Couverture pondérée avec crédit partiel min(n, r) / r. 0..1. (≠ Metrics.weightedCoverage) */
+  partialWeightedCoverage: number;
 }
 
 export interface CouchesRedondance {
@@ -94,7 +66,6 @@ function compter(grid: Grid, assignments: Assignment[], opts: MetricsOptions) {
 export function mesurerRedondance(
   grid: Grid,
   assignments: Assignment[],
-  redondance: Uint8Array,
   opts: MetricsOptions = {},
 ): IndicateursRedondance {
   const { tous, capables } = compter(grid, assignments, opts);
@@ -107,7 +78,7 @@ export function mesurerRedondance(
   let wServi = 0;
   for (const cell of grid.cells) {
     if (cell.forbidden) continue;
-    const r = redondance[cell.id] || 1;
+    const r = cell.redundancy;
     const n = tous[cell.id];
     const w = PRIORITY_WEIGHTS[cell.priorityLevel] ?? 1;
     wTotal += w;
@@ -125,18 +96,17 @@ export function mesurerRedondance(
     usefulOverlap: couvertes ? utiles / couvertes : 0,
     superfluousOverlap: couvertes ? superflues / couvertes : 0,
     redundancyMet: exigeantes ? atteintes / exigeantes : 1,
-    weightedCoverage: wTotal ? wServi / wTotal : 0,
+    partialWeightedCoverage: wTotal ? wServi / wTotal : 0,
   };
 }
 
 export function couchesRedondance(
   grid: Grid,
   assignments: Assignment[],
-  redondance: Uint8Array,
   opts: MetricsOptions = {},
 ): CouchesRedondance {
   const { index, tous, capables } = compter(grid, assignments, opts);
-  const r = (id: number) => redondance[id] || 1;
+  const r = (id: number) => grid.cells[id].redundancy;
   const ouverte = (id: number) => !grid.cells[id].forbidden;
   return {
     phase: grid.phase,
@@ -165,15 +135,11 @@ function capacitesEnClair(req: Requirement): string {
  * de couples disponibles dont le drone a les capacités exigées par la zone. Ne vérifie pas
  * l'étagement en hauteur ni les zones limites des couples : c'est au solveur de le dire.
  */
-export function verifierRedondance(
-  mission: Mission,
-  catalog: DroneModel[],
-  redondances: RedondanceParZone,
-): string[] {
+export function verifierRedondance(mission: Mission, catalog: DroneModel[]): string[] {
   const messages: string[] = [];
   const modeles = new Map(catalog.map((m) => [m.id, m]));
   for (const zone of mission.priorityZones) {
-    const r = redondances[zone.id] ?? 1;
+    const r = zone.redundancy;
     if (!Number.isInteger(r) || r < 1) {
       messages.push(
         `${zone.name} : nombre de drones voulus invalide (${r}), il faut un entier ≥ 1.`,
