@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { communesDemo, drones, pilotRules } from '@aeris/data';
+import { communesDemo, pilotRules } from '@aeris/data';
 import {
   buildGrid,
   communesConcernees,
@@ -24,6 +24,7 @@ import {
   type Strategy,
   type Weather,
 } from '@aeris/shared';
+import { getDrones } from '../catalogStore';
 
 export const STRATEGY_LABELS: Record<Strategy, string> = {
   couverture_globale: 'Couverture maximale',
@@ -33,9 +34,9 @@ export const STRATEGY_LABELS: Record<Strategy, string> = {
 
 const SEVERITY: Record<SolveStatus, number> = { optimal: 0, faisable: 1, infaisable: 2 };
 
-export function canServeFor(mission: Mission) {
+export function canServeFor(mission: Mission, catalog = getDrones()) {
   const modelByRes = new Map(
-    mission.resources.map((r) => [r.id, drones.find((d) => d.id === r.droneModelId)]),
+    mission.resources.map((r) => [r.id, catalog.find((d) => d.id === r.droneModelId)]),
   );
   return (resourceId: string, cell: Cell) => {
     const m = modelByRes.get(resourceId);
@@ -48,8 +49,13 @@ export function canServeFor(mission: Mission) {
  * données externes (couverture par zone prioritaire, communes concernées).
  * Les communes ne sont connues qu'autour de la zone de démo (packages/data) : ailleurs, liste vide.
  */
-function fullMetrics(mission: Mission, grid: Grid, assignments: Assignment[]): Metrics {
-  const canServe = canServeFor(mission);
+function fullMetrics(
+  mission: Mission,
+  grid: Grid,
+  assignments: Assignment[],
+  catalog = getDrones(),
+): Metrics {
+  const canServe = canServeFor(mission, catalog);
   return {
     ...computeMetrics(grid, assignments, { canServe }),
     communes: communesConcernees(grid, assignments, communesDemo),
@@ -57,8 +63,13 @@ function fullMetrics(mission: Mission, grid: Grid, assignments: Assignment[]): M
   };
 }
 
-export function metricsFor(mission: Mission, phase: number, assignments: Assignment[]): Metrics {
-  return fullMetrics(mission, buildGrid(mission, phase), assignments);
+export function metricsFor(
+  mission: Mission,
+  phase: number,
+  assignments: Assignment[],
+  catalog = getDrones(),
+): Metrics {
+  return fullMetrics(mission, buildGrid(mission, phase), assignments, catalog);
 }
 
 export interface BuildOptions {
@@ -70,10 +81,11 @@ export interface BuildOptions {
 }
 
 export function coverageFor(mission: Mission, phase: number, assignments: Assignment[]) {
+  const catalog = getDrones();
   const grid = buildGrid(mission, phase);
   const ofPhase = assignments.filter((a) => a.phase === phase);
   return {
-    ...coverageGeometry(grid, ofPhase, { canServe: canServeFor(mission) }),
+    ...coverageGeometry(grid, ofPhase, { canServe: canServeFor(mission, catalog) }),
     byResource: couchesParCouple(grid, ofPhase),
   };
 }
@@ -85,8 +97,9 @@ export function stabilityFor(
   before: Assignment[],
   after: Assignment[],
 ) {
+  const catalog = getDrones();
   return mesurerStabilite(buildGrid(mission, phase), before, after, {
-    canServe: canServeFor(mission),
+    canServe: canServeFor(mission, catalog),
   });
 }
 
@@ -97,9 +110,10 @@ export async function buildProposal(
   opts: BuildOptions = {},
 ): Promise<Proposal> {
   const phases = opts.phases ?? [...Array(mission.phaseCount).keys()];
+  const catalog = getDrones();
   // Une météo de repli n'est pas une mesure : on ne s'en sert pas pour écarter des drones.
   const realWeather = opts.weather?.source === 'repli' ? undefined : opts.weather;
-  const excluded = realWeather ? excludedByWeather(mission.resources, drones, realWeather) : {};
+  const excluded = realWeather ? excludedByWeather(mission.resources, catalog, realWeather) : {};
   const assignments: Assignment[] = [];
   const metricsByPhase: Metrics[] = [];
   const diagnostics: string[] = [];
@@ -115,7 +129,7 @@ export async function buildProposal(
     const grid = buildGrid(mission, phase);
     const res = await solve({
       mission,
-      catalog: drones,
+      catalog,
       rules: pilotRules,
       grid,
       phase,
@@ -125,13 +139,13 @@ export async function buildProposal(
     });
     const dc = deconflict(res.assignments, {
       mission,
-      catalog: drones,
+      catalog,
       rules: pilotRules,
       grid,
       phase,
     });
     assignments.push(...dc.assignments);
-    metricsByPhase.push(fullMetrics(mission, grid, dc.assignments));
+    metricsByPhase.push(fullMetrics(mission, grid, dc.assignments, catalog));
     for (const d of [...res.diagnostics, ...dc.diagnostics])
       diagnostics.push(`Phase ${phase + 1} — ${d}`);
     if (SEVERITY[res.status] > SEVERITY[status]) status = res.status;

@@ -42,6 +42,18 @@ export const AcceptRequest = z.object({ proposalId: z.string() });
 export const Catalog = z.object({ drones: z.array(DroneModel), rules: z.array(PilotRule) });
 export type Catalog = z.infer<typeof Catalog>;
 
+export const NewDroneModel = DroneModel.omit({
+  id: true,
+  enduranceMin: true,
+  minTempC: true,
+  maxTempC: true,
+}).extend({
+  name: z.string().trim().min(1),
+  maxWindMs: z.number().nonnegative(),
+  zoomX: z.number().nonnegative(),
+});
+export type NewDroneModel = z.infer<typeof NewDroneModel>;
+
 export const WsMessage = z.discriminatedUnion('type', [
   z.object({ type: z.literal('live'), live: LiveState }),
   z.object({ type: z.literal('error'), message: z.string() }),
@@ -51,6 +63,7 @@ export type WsMessage = z.infer<typeof WsMessage>;
 /** Chemins d'API : source unique pour le front et le back. */
 export const API = {
   catalog: '/api/catalog',
+  catalogDrones: '/api/catalog/drones',
   demoMission: '/api/demo-mission',
   missions: '/api/missions',
   mission: (id: string) => `/api/missions/${id}`,
