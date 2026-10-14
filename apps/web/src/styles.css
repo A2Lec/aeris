@@ -12,6 +12,10 @@
   --best: #7bc9a0;
   --warn: #e8b15a;
   --ko: #e77b72;
+  /* Anciens noms encore utilisés par d'autres feuilles (config.css). */
+  --line: var(--rule);
+  --muted: var(--dim);
+  --ok: var(--best);
   --bar-h: 48px;
   --gap: 12px;
   font-family: 'Barlow', system-ui, 'Segoe UI', sans-serif;
@@ -264,7 +268,8 @@ label {
   margin: 6px 0;
 }
 input[type='number'],
-select {
+.app input[type='text'],
+.app select {
   font: inherit;
   color: var(--text);
   background: var(--raised);
