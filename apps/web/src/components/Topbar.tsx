@@ -7,6 +7,8 @@ import { useScenarioStore } from '../features/scenarios/store';
 import { engagedCount } from '../features/scenarios/compare';
 import { AppMenu, useMenuStore } from './AppMenu';
 import { summarizeWeather } from './format';
+import { formatSlotTime, phaseSlots } from '../features/config/period';
+import { centreZone } from '../features/live/meteo';
 import './components.css';
 
 const STEPS: { id: MissionStatus; label: string }[] = [
@@ -60,6 +62,14 @@ export function Topbar() {
       ? engagedCount(selected, phase)
       : undefined;
   const weather = inLive && live.weather ? summarizeWeather(live.weather) : undefined;
+  // Créneau et jour/nuit de chaque phase, si la période de l'intervention est connue.
+  const slots = mission ? phaseSlots(mission, centreZone(mission)[1], centreZone(mission)[0]) : [];
+  const slotLabel = (p: number) => {
+    const slot = slots[p];
+    return slot
+      ? `${formatSlotTime(slot.start)} – ${formatSlotTime(slot.end, slot.start)}, ${slot.day ? 'jour' : 'nuit'}`
+      : undefined;
+  };
 
   return (
     <>
@@ -110,7 +120,11 @@ export function Topbar() {
                   className={p === phase ? 'active' : ''}
                   aria-pressed={p === phase}
                   disabled={busy && inLive}
-                  title={inLive ? `Passer l’opération en phase ${p + 1}` : undefined}
+                  title={
+                    [inLive ? `Passer l’opération en phase ${p + 1}` : undefined, slotLabel(p)]
+                      .filter(Boolean)
+                      .join(' : ') || undefined
+                  }
                   onClick={() => p !== phase && choosePhase(p)}
                 >
                   Phase {p + 1}

@@ -316,3 +316,16 @@
 .wizard-body .resume-step {
   margin: 0;
 }
+
+/* Météo de reprise : jour ou nuit et drones au sol, phase par phase. */
+.weather-phases li {
+  grid-template-columns: auto 1fr auto;
+}
+.weather-phases li > small {
+  grid-column: 1 / -1;
+  margin-top: -2px;
+  line-height: 1.4;
+}
+.weather-phases .grounded-line {
+  color: var(--warn-text);
+}
