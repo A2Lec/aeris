@@ -6,6 +6,7 @@ import { WizardWindow } from '../../components/WizardWindow';
 import { CONSTRAINT_COLORS, PRIORITY_COLORS } from '../../map/colors';
 import { searchPlaces, type Place } from './place';
 import { togglePhase, withPhaseCount, zonePhases } from './phases';
+import { maxRedundancy, redundancyWarning } from './redundancy';
 import { WIZARD_STEPS, useConfigEditorStore, type ConfigDrawMode, type WizardStep } from './store';
 import './config.css';
 
@@ -493,9 +494,46 @@ export function ConstraintFields({ kinds }: { kinds: ConstraintKind[] }) {
   );
 }
 
-/** Zones prioritaires : niveau d'importance, tracé, liste. */
+/** Nombre de drones voulus simultanément sur une zone : − / valeur / +, de 1 à `max`. */
+function RedundancyStepper({
+  value,
+  max,
+  disabled,
+  label,
+  onChange,
+}: {
+  value: number;
+  max: number;
+  disabled?: boolean;
+  label: string;
+  onChange: (n: number) => void;
+}) {
+  return (
+    <span className="stepper" role="group" aria-label={label}>
+      <button
+        className="small"
+        disabled={disabled || value <= 1}
+        onClick={() => onChange(value - 1)}
+        aria-label="Un drone de moins"
+      >
+        −
+      </button>
+      <output>{value}</output>
+      <button
+        className="small"
+        disabled={disabled || value >= max}
+        onClick={() => onChange(value + 1)}
+        aria-label="Un drone de plus"
+      >
+        +
+      </button>
+    </span>
+  );
+}
+
+/** Zones prioritaires : niveau d'importance, drones voulus, tracé, liste. */
 export function PriorityFields() {
-  const { state, busy } = useMissionStore();
+  const { state, busy, catalog } = useMissionStore();
   const editor = useConfigEditorStore();
   const update = useMissionUpdate();
   const zones = state?.mission.priorityZones ?? [];
@@ -503,6 +541,17 @@ export function PriorityFields() {
   const { setZoneName } = editor;
   useEffect(() => setZoneName(''), [count, setZoneName]);
   if (!state) return null;
+  const { mission } = state;
+  const drones = catalog?.drones ?? [];
+  const max = maxRedundancy(mission);
+  const nextWarning = redundancyWarning(mission, drones, {
+    redundancy: editor.priorityRedundancy,
+    requires: {},
+  });
+  const setRedundancy = (id: string, redundancy: number) =>
+    update({
+      priorityZones: mission.priorityZones.map((z) => (z.id === id ? { ...z, redundancy } : z)),
+    });
 
   return (
     <>
@@ -521,6 +570,19 @@ export function PriorityFields() {
           ))}
         </div>
       </div>
+      <div className="wizard-field">
+        <span>Drones voulus en même temps sur la zone</span>
+        <RedundancyStepper
+          label="Drones voulus en même temps sur la zone"
+          value={Math.min(editor.priorityRedundancy, max)}
+          max={max}
+          onChange={editor.setPriorityRedundancy}
+        />
+        <small className="hint">
+          Au-delà de 1 : plusieurs angles de vue, ou relève sans trou. Borné par l’arrêté.
+        </small>
+        {nextWarning && <div className="notice warn">{nextWarning}</div>}
+      </div>
       <label>
         Nom de la zone
         <input
@@ -533,12 +595,27 @@ export function PriorityFields() {
       <DrawButton mode="priority" label="Tracer une zone prioritaire" />
       <ZoneList
         empty="Aucune zone prioritaire : le solveur couvrira la zone d’intervention de façon uniforme."
-        zones={zones.map((z) => ({
-          id: z.id,
-          name: z.name,
-          color: PRIORITY_COLORS[z.level],
-          detail: `Priorité ${z.level}`,
-        }))}
+        zones={zones.map((z) => {
+          const warning = redundancyWarning(mission, drones, z);
+          return {
+            id: z.id,
+            name: z.name,
+            color: PRIORITY_COLORS[z.level],
+            detail: `Priorité ${z.level} · ${z.redundancy} drone${z.redundancy > 1 ? 's' : ''}`,
+            extra: (
+              <>
+                <RedundancyStepper
+                  label={`Drones voulus sur ${z.name}`}
+                  value={z.redundancy}
+                  max={Math.max(max, z.redundancy)}
+                  disabled={busy}
+                  onChange={(n) => setRedundancy(z.id, n)}
+                />
+                {warning && <div className="notice warn">{warning}</div>}
+              </>
+            ),
+          };
+        })}
         disabled={busy}
         onRemove={(id) =>
           update({ priorityZones: state.mission.priorityZones.filter((z) => z.id !== id) })
@@ -555,7 +632,7 @@ function ZoneList({
   disabled,
   onRemove,
 }: {
-  zones: { id: string; name: string; color: string; detail?: string }[];
+  zones: { id: string; name: string; color: string; detail?: string; extra?: ReactNode }[];
   empty: string;
   disabled: boolean;
   onRemove: (id: string) => void;
@@ -568,6 +645,7 @@ function ZoneList({
           <span className="swatch" style={{ color: z.color }} aria-hidden="true" />
           <span className="zone-name">{z.name}</span>
           {z.detail && <small className="hint">{z.detail}</small>}
+          {z.extra}
           <button
             className="small"
             disabled={disabled}

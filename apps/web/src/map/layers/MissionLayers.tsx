@@ -112,7 +112,7 @@ export function MissionLayers({ mission, phase }: { mission: Mission; phase?: nu
                 geometry,
                 level: editor.priorityLevel,
                 requires: {},
-                redundancy: 1,
+                redundancy: editor.priorityRedundancy,
               },
             ],
           };
@@ -224,7 +224,11 @@ export function MissionLayers({ mission, phase }: { mission: Mission; phase?: nu
           data={geo(z.geometry)}
           style={{ color: PRIORITY_COLORS[z.level], weight: 2, fillOpacity: 0.12 + 0.05 * z.level }}
           onEachFeature={(_, layer) => {
-            layer.bindTooltip(`${z.name} — priorité ${z.level}${z.action ? ` (${z.action})` : ''}`);
+            layer.bindTooltip(
+              `${z.name} — priorité ${z.level}${z.action ? ` (${z.action})` : ''}${
+                z.redundancy > 1 ? `, ${z.redundancy} drones voulus` : ''
+              }`,
+            );
             editLayer('priority', layer, z.id);
           }}
         />
