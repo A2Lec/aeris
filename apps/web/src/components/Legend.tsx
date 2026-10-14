@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import type { CommuneCoverage } from '@aeris/shared';
+import type { CommuneCoverage, Pilot } from '@aeris/shared';
 import {
   CONSTRAINT_COLORS,
   COVERAGE_COLORS,
-  LEVEL_COLORS,
+  pilotColor,
   PRIORITY_COLORS,
   WORK_AREA_STYLE,
 } from '../map/colors';
@@ -31,8 +31,6 @@ const BASE: Item[] = [
 ];
 
 const COVERAGE: Item[] = [
-  { label: 'Portée TP1 (1 km)', stroke: LEVEL_COLORS.TP1, round: true },
-  { label: 'Portée TP2 (2 km)', stroke: LEVEL_COLORS.TP2, round: true },
   { label: 'Chevauchement', stroke: 'transparent', fill: COVERAGE_COLORS.overlap },
   { label: 'Trou de couverture', stroke: COVERAGE_COLORS.gaps, dash: '2 2' },
 ];
@@ -67,12 +65,24 @@ function Swatch({ item }: { item: Item }) {
 export function Legend({
   withCoverage,
   communes,
+  pilots,
 }: {
   withCoverage: boolean;
   communes?: CommuneCoverage[];
+  pilots?: Pick<Pilot, 'id' | 'name'>[];
 }) {
   const [open, setOpen] = useState(true);
-  const items = withCoverage ? [...BASE, ...COVERAGE] : BASE;
+  const pilotItems: Item[] = pilots?.length
+    ? pilots.map((pilot, index) => ({
+        label: `${pilot.name} — portée`,
+        stroke: pilotColor(
+          pilot.id,
+          pilots.map((item) => item.id),
+        ),
+        round: true,
+      }))
+    : [{ label: 'Portée par télépilote', stroke: '#2563eb', round: true }];
+  const items = withCoverage ? [...BASE, ...pilotItems, ...COVERAGE] : BASE;
   return (
     <div className="legend card">
       <button className="legend-toggle" onClick={() => setOpen(!open)} aria-expanded={open}>

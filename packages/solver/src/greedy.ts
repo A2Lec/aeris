@@ -57,6 +57,7 @@ class State {
   readonly seen: Int32Array;
   readonly zoneCount: Int32Array;
   readonly choice: Int32Array;
+  readonly pilotChoice = new Map<string, number>();
   engaged = 0;
   value = 0;
 
@@ -86,6 +87,7 @@ class State {
     }
     for (const z of u.zonesIn[j]!) if (--this.zoneCount[z]! === 0) d -= this.p.zoneValue;
     this.choice[k] = -1;
+    this.pilotChoice.delete(u.res.pilotId);
     this.engaged--;
     this.value += d;
     return d;
@@ -101,6 +103,7 @@ class State {
     }
     for (const z of u.zonesIn[j]!) if (this.zoneCount[z]!++ === 0) d += this.p.zoneValue;
     this.choice[k] = j;
+    this.pilotChoice.set(u.res.pilotId, k);
     this.engaged++;
     this.value += d;
     return d;
@@ -127,14 +130,21 @@ class State {
 function construct(p: Problem): State {
   const s = new State(p);
   p.usable.forEach((u, k) => {
-    if (u.fixed && s.engaged < p.maxEngaged) s.add(k, 0);
+    if (u.fixed && s.engaged < p.maxEngaged && !s.pilotChoice.has(u.res.pilotId)) s.add(k, 0);
   });
   p.usable.forEach((u, k) => {
-    if (s.engaged >= p.maxEngaged || u.fixed || u.prevIndex < 0) return;
+    if (s.engaged >= p.maxEngaged || u.fixed || u.prevIndex < 0 || s.pilotChoice.has(u.res.pilotId))
+      return;
     if (s.gainAt(k, u.prevIndex) > 0) s.add(k, u.prevIndex);
   });
   p.usable.forEach((u, k) => {
-    if (s.choice[k]! >= 0 || u.fixed || s.engaged >= p.maxEngaged) return;
+    if (
+      s.choice[k]! >= 0 ||
+      u.fixed ||
+      s.engaged >= p.maxEngaged ||
+      s.pilotChoice.has(u.res.pilotId)
+    )
+      return;
     let best = -1;
     let bestGain = 0;
     for (let j = 0; j < u.candidates.length; j++) {
@@ -189,7 +199,7 @@ export function anneal(p: Problem, opts: AnnealOptions = {}): Int32Array {
   if (opts.init) {
     s = new State(p);
     opts.init.forEach((j, k) => {
-      if (j >= 0) s.add(k, j);
+      if (j >= 0 && !s.pilotChoice.has(p.usable[k]!.res.pilotId)) s.add(k, j);
     });
   } else s = construct(p);
 
@@ -229,23 +239,36 @@ export function anneal(p: Problem, opts: AnnealOptions = {}): Int32Array {
     } else if (j >= 0) {
       delta += s.remove(k);
       undo = () => s.add(k, j);
-    } else if (s.engaged < p.maxEngaged) {
-      const nj = pickCandidate(p, k, undefined, rand);
-      delta += s.add(k, nj);
-      undo = () => s.remove(k);
     } else {
-      // Arrêté atteint : échange avec un couple engagé non imposé, repris près de sa position.
-      const others = movable.filter((o) => s.choice[o]! >= 0);
-      if (others.length === 0) continue;
-      const o = others[Math.floor(rand() * others.length)]!;
-      const oj = s.choice[o]!;
-      const nj = pickCandidate(p, k, p.usable[o]!.candidates[oj], rand);
-      delta += s.remove(o);
-      delta += s.add(k, nj);
-      undo = () => {
-        s.remove(k);
-        s.add(o, oj);
-      };
+      const pilotResource = s.pilotChoice.get(u.res.pilotId);
+      if (pilotResource !== undefined) {
+        if (p.usable[pilotResource]!.fixed) continue;
+        const pilotPosition = s.choice[pilotResource]!;
+        const nj = pickCandidate(p, k, p.usable[pilotResource]!.candidates[pilotPosition], rand);
+        delta += s.remove(pilotResource);
+        delta += s.add(k, nj);
+        undo = () => {
+          s.remove(k);
+          s.add(pilotResource, pilotPosition);
+        };
+      } else if (s.engaged < p.maxEngaged) {
+        const nj = pickCandidate(p, k, undefined, rand);
+        delta += s.add(k, nj);
+        undo = () => s.remove(k);
+      } else {
+        // Arrêté atteint : échange avec un couple engagé non imposé, repris près de sa position.
+        const others = movable.filter((o) => s.choice[o]! >= 0);
+        if (others.length === 0) continue;
+        const o = others[Math.floor(rand() * others.length)]!;
+        const oj = s.choice[o]!;
+        const nj = pickCandidate(p, k, p.usable[o]!.candidates[oj], rand);
+        delta += s.remove(o);
+        delta += s.add(k, nj);
+        undo = () => {
+          s.remove(k);
+          s.add(o, oj);
+        };
+      }
     }
 
     if (delta >= 0 || rand() < Math.exp(delta / temp)) {

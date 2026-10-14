@@ -4,7 +4,7 @@ import L from 'leaflet';
 import type { Assignment, Mission } from '@aeris/shared';
 import { useMissionStore } from '../../app/missionStore';
 import { resourceLabel } from '../../features/resourceLabel';
-import { LEVEL_COLORS } from '../colors';
+import { pilotColor } from '../colors';
 import { SEMANTIC } from '../../theme';
 
 interface Props {
@@ -18,15 +18,16 @@ interface Props {
   onMove?: (resourceId: string, lngLat: [number, number]) => void;
 }
 
-/** Un cercle de portée + un marqueur par couple, coloré selon le niveau du télépilote. */
+/** Un cercle de portée + un marqueur par couple, coloré selon le télépilote. */
 export function AssignmentsLayer({ mission, assignments, ghost, focusedId, onMove }: Props) {
   const catalog = useMissionStore((state) => state.catalog);
+  const pilotIds = mission.pilots.map((pilot) => pilot.id);
   return (
     <>
       {assignments.map((a) => {
         const res = mission.resources.find((r) => r.id === a.resourceId);
         const pilot = mission.pilots.find((p) => p.id === res?.pilotId);
-        const color = pilot ? LEVEL_COLORS[pilot.level] : SEMANTIC.neutral;
+        const color = pilot ? pilotColor(pilot.id, pilotIds) : SEMANTIC.neutral;
         const focused = a.resourceId === focusedId;
         const [lng, lat] = a.position.coordinates;
         const icon = L.divIcon({

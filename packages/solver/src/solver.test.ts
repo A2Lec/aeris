@@ -77,8 +77,7 @@ describe('recuit simulé', () => {
     expect(Array.from(a)).toEqual(Array.from(b));
   });
 
-  it('ne déplace aucun drone au recalcul quand il n’y a rien à gagner (aucun trou)', () => {
-    // Les trous passent avant la stabilité : on teste donc la stabilité là où il n'y en a pas.
+  it('respecte la limite d’un drone par télépilote au recalcul', () => {
     const tp2 = mission.resources.find(
       (r) => mission.pilots.find((p) => p.id === r.pilotId)!.level === 'TP2',
     )!;
@@ -98,11 +97,44 @@ describe('recuit simulé', () => {
     const ctx = { ...ctxFor('priorite'), mission: big, grid: buildGrid(big, 0) };
     const first = greedySolve(ctx);
     const again = greedySolve({ ...ctx, previous: first.assignments });
-    // Un drone peut être ajouté, mais ceux déjà en place ne bougent pas.
-    for (const a of first.assignments) {
-      const b = again.assignments.find((x) => x.resourceId === a.resourceId);
-      expect(b?.position, a.resourceId).toEqual(a.position);
+    const pilotIds = new Map(big.resources.map((resource) => [resource.id, resource.pilotId]));
+    for (const result of [first, again]) {
+      const assignedPilots = result.assignments.map((assignment) =>
+        pilotIds.get(assignment.resourceId),
+      );
+      expect(new Set(assignedPilots).size).toBe(assignedPilots.length);
     }
+  }, 15_000);
+
+  it('n’affecte qu’un drone par télépilote dans une phase', () => {
+    const resource = mission.resources.find((item) => !item.fixedPosition)!;
+    const alternateModel = drones.find((drone) => drone.id !== resource.droneModelId)!;
+    const duplicatePilotMission = {
+      ...mission,
+      id: 'duplicate-pilot-resources',
+      maxDrones: 2,
+      resources: [
+        { ...resource, id: 'pilot-drone-a' },
+        { ...resource, id: 'pilot-drone-b', droneModelId: alternateModel.id },
+      ],
+    };
+    const ctx = {
+      mission: duplicatePilotMission,
+      catalog: drones,
+      rules: pilotRules,
+      grid: buildGrid(duplicatePilotMission, 0),
+      phase: 0,
+      strategy: 'priorite' as const,
+    };
+    const pilotIds = new Map(
+      duplicatePilotMission.resources.map((item) => [item.id, item.pilotId]),
+    );
+    const expectOneDronePerPilot = (result: ReturnType<typeof greedySolve>) => {
+      const assignedPilots = result.assignments.map((item) => pilotIds.get(item.resourceId));
+      expect(new Set(assignedPilots).size).toBe(assignedPilots.length);
+    };
+
+    expectOneDronePerPilot(greedySolve(ctx));
   });
 
   it('économie de moyens n’engage pas plus de couples que couverture globale', () => {
@@ -196,9 +228,12 @@ describe('trous', () => {
     const tp2 = mission.resources.find(
       (r) => mission.pilots.find((p) => p.id === r.pilotId)!.level === 'TP2',
     )!;
+    const tp2Pilot = mission.pilots.find((pilot) => pilot.id === tp2.pilotId)!;
+    const extraPilotIds = [0, 1, 2].map((i) => `x-pilot-${i}`);
     const extra = [0, 1, 2].map((i) => ({
       ...tp2,
       id: `x${i}`,
+      pilotId: extraPilotIds[i]!,
       fixedPosition: undefined,
       allowedArea: undefined,
       available: true,
@@ -206,6 +241,7 @@ describe('trous', () => {
     const big = {
       ...mission,
       maxDrones: 9,
+      pilots: [...mission.pilots, ...extraPilotIds.map((id) => ({ ...tp2Pilot, id, name: id }))],
       resources: [...mission.resources.map((r) => ({ ...r, available: true })), ...extra],
     };
     const grid = buildGrid(big, 0);

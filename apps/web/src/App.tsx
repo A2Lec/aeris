@@ -73,7 +73,7 @@ export function App() {
         {preparing && (resuming ? <ResumeWizard /> : <ConfigPanel />)}
         {proposing && <ScenariosPanel />}
         {state && !preparing && !(proposing && !minimized) && (
-          <Legend withCoverage communes={communes} />
+          <Legend withCoverage communes={communes} pilots={state.mission.pilots} />
         )}
         {error && (
           <p className="toast" role="alert">

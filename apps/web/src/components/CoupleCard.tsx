@@ -1,4 +1,5 @@
 import type { Assignment, Catalog, Mission } from '@aeris/shared';
+import { pilotColor } from '../map/colors';
 import { formatSlot } from './format';
 import './components.css';
 
@@ -29,6 +30,7 @@ export function CoupleCard({
   const res = mission.resources.find((r) => r.id === a.resourceId);
   const pilot = mission.pilots.find((p) => p.id === res?.pilotId);
   const drone = catalog?.drones.find((d) => d.id === res?.droneModelId);
+  const pilotIds = mission.pilots.map((item) => item.id);
   const [lng, lat] = a.position.coordinates;
   const km = a.radiusM / 1000;
 
@@ -36,7 +38,16 @@ export function CoupleCard({
     <article className={`card couple ${focused ? 'focused' : ''}`}>
       <header>
         <div>
-          <b title={a.resourceId}>{pilot?.name ?? 'Télépilote inconnu'}</b>
+          <b className="pilot-name" title={a.resourceId}>
+            {pilot && (
+              <span
+                className="pilot-color-dot"
+                style={{ backgroundColor: pilotColor(pilot.id, pilotIds) }}
+                aria-hidden="true"
+              />
+            )}
+            {pilot?.name ?? 'Télépilote inconnu'}
+          </b>
           <small>{drone?.name ?? res?.droneModelId}</small>
         </div>
         {pilot && (

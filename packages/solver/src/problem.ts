@@ -411,7 +411,15 @@ export function toResult(problem: Problem, choice: Int32Array, extra: string[] =
   usable.forEach((u, k) => {
     const j = choice[k]!;
     if (j < 0) {
-      if (engaged >= problem.maxEngaged)
+      const pilotAssignedElsewhere = usable.some(
+        (other, otherIndex) =>
+          otherIndex !== k && other.res.pilotId === u.res.pilotId && choice[otherIndex]! >= 0,
+      );
+      if (pilotAssignedElsewhere)
+        diagnostics.push(
+          `${u.res.id} non engagé : télépilote déjà affecté à un autre drone sur cette phase`,
+        );
+      else if (engaged >= problem.maxEngaged)
         diagnostics.push(`${u.res.id} non engagé : arrêté (${problem.maxEngaged} drones max)`);
       else if (problem.droneCost > 0)
         diagnostics.push(`${u.res.id} non engagé : apport marginal < ${MIN_MARGINAL_GAIN * 100} %`);

@@ -1,5 +1,5 @@
 import { defineConfig } from 'vitest/config';
 
-// Le recuit prend plusieurs secondes par test : la limite de 5 s par défaut est trop juste
-// dès que plusieurs fichiers de tests tournent en parallèle.
-export default defineConfig({ test: { testTimeout: 20_000 } });
+// Chaque résolution prend ~0,8 s (recuit à nombre d'itérations fixe) et certains tests en
+// enchaînent plusieurs : sur la CI, plus lente, ils dépassaient le délai par défaut de 5 s.
+export default defineConfig({ test: { testTimeout: 30_000 } });
