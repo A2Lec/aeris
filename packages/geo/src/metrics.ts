@@ -71,7 +71,8 @@ export const computeMetrics: MetricsEngine = (grid, assignments, opts = {}) => {
     coveredAreaM2: covered * area,
     uncoveredAreaM2: (coverable - covered) * area,
     forbiddenAreaM2: forbidden * area,
-    communes: [], // TODO(P3) : geo.api.gouv.fr/communes?lat=&lon= sur les cellules couvertes
+    // TODO(P1) : remplir avec communesConcernees(grid, assignments, communesDemo) dans le pipeline.
+    communes: [],
     usefulOverlap: covered ? useful / covered : 0,
     superfluousOverlap: covered ? superfluous / covered : 0,
     redundancyMet: demanding ? met / demanding : 1,
