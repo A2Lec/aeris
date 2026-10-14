@@ -3,7 +3,12 @@ import { areaM2, makeAssignment } from '@aeris/contracts';
 import { Mission, type LngLat, type PolygonGeom } from '@aeris/shared';
 import { buildGrid } from './grid';
 import { computeMetrics } from './metrics';
-import { couchesRedondance, mesurerRedondance, redondanceDesCellules } from './redondance';
+import {
+  couchesRedondance,
+  maxSimultanes,
+  mesurerRedondance,
+  redondanceDesCellules,
+} from './redondance';
 
 const rect = (o: number, s: number, e: number, n: number): PolygonGeom => ({
   type: 'Polygon',
@@ -111,5 +116,53 @@ describe('mesurerRedondance', () => {
     const red = mesurerRedondance(grid, deux, r2, { canServe: () => false });
     expect(red.redundancyMet).toBe(0);
     expect(red.weightedCoverage).toBe(0);
+  });
+});
+
+describe('redondance en même temps', () => {
+  const creneau = (id: string, start: string, end: string) => ({
+    ...makeAssignment(id, etang, 1000),
+    slot: { start, end },
+  });
+
+  it('maxSimultanes : recouvrement, relais, sans créneau', () => {
+    expect(maxSimultanes([])).toBe(0);
+    expect(
+      maxSimultanes([
+        ['10:00', '11:00'],
+        ['10:30', '11:30'],
+      ]),
+    ).toBe(2);
+    expect(
+      maxSimultanes([
+        ['10:00', '11:00'],
+        ['11:00', '12:00'],
+      ]),
+    ).toBe(1);
+    expect(
+      maxSimultanes([
+        ['', '\uffff'],
+        ['10:00', '11:00'],
+        ['10:30', '10:45'],
+      ]),
+    ).toBe(3);
+  });
+
+  it('deux drones qui se relaient sur l’étang : redondance non atteinte', () => {
+    const relais = [creneau('a', '10:00', '11:00'), creneau('b', '11:00', '12:00')];
+    const red = mesurerRedondance(grid, relais, r2);
+    expect(red.redundancyMet).toBe(0);
+    expect(red.usefulOverlap).toBe(0);
+    expect(areaM2(couchesRedondance(grid, relais, r2).redundancyMissing)).toBeGreaterThan(0);
+  });
+
+  it('deux drones dont les créneaux se recouvrent : redondance atteinte', () => {
+    const ensemble = [creneau('a', '10:00', '11:00'), creneau('b', '10:30', '11:30')];
+    expect(mesurerRedondance(grid, ensemble, r2).redundancyMet).toBe(1);
+  });
+
+  it('un drone sans créneau est présent toute la phase', () => {
+    const mixte = [makeAssignment('a', etang, 1000), creneau('b', '10:00', '11:00')];
+    expect(mesurerRedondance(grid, mixte, r2).redundancyMet).toBe(1);
   });
 });

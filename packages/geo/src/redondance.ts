@@ -1,12 +1,14 @@
 /**
  * Redondance : une zone prioritaire peut exiger r drones en même temps (r fixé par
  * l'utilisateur, 1 par défaut). Sur chaque cellule on compare r au nombre n de drones qui la
- * voient :
+ * voient AU MÊME MOMENT : deux drones dont les créneaux (`slot`) ne se recouvrent pas se
+ * relaient, ils ne comptent pas comme deux. Un drone sans créneau vole toute la phase.
  *   - chevauchement utile    : 2 ≤ n ≤ r (les drones voulus en plus du premier) ;
  *   - chevauchement superflu : n > r (le seul que le solveur doit chercher à réduire) ;
  *   - redondance atteinte    : n drones capables ≥ r, sur les cellules où r ≥ 2 ;
  *   - couverture pondérée    : crédit partiel min(n, r) / r du poids de la cellule.
- * Avec r = 1 partout, on retrouve exactement overlap et weightedCoverage de computeMetrics.
+ * Avec r = 1 partout et sans créneaux, on retrouve exactement overlap et weightedCoverage de
+ * computeMetrics.
  */
 import { booleanPointInPolygon } from '@turf/turf';
 import {
@@ -49,11 +51,11 @@ export function redondanceDesCellules(
 }
 
 export interface IndicateursRedondance {
-  /** Part de la surface couverte vue par 2 à r drones (chevauchement voulu). 0..1. */
+  /** Part de la surface couverte vue par 2 à r drones en même temps (chevauchement voulu). 0..1. */
   usefulOverlap: number;
-  /** Part de la surface couverte vue par plus de r drones (chevauchement inutile). 0..1. */
+  /** Part de la surface couverte vue par plus de r drones en même temps. 0..1. */
   superfluousOverlap: number;
-  /** Part des cellules exigeant r ≥ 2 qui ont leurs r drones capables. 1 s'il n'y en a pas. */
+  /** Part des cellules exigeant r ≥ 2 qui ont r drones capables en même temps. 1 s'il n'y en a pas. */
   redundancyMet: number;
   /** Couverture pondérée avec crédit partiel min(n, r) / r. 0..1. */
   weightedCoverage: number;
@@ -67,16 +69,63 @@ export interface CouchesRedondance {
   superfluousOverlap: MultiPolygonGeom;
 }
 
-/** n (tous drones) et n capables (canServe) par cellule non interdite. */
+type Intervalle = [debut: string, fin: string];
+
+/** Sans créneau : toute la phase. Les bornes se comparent comme des chaînes ISO. */
+const TOUTE_LA_PHASE: Intervalle = ['', '\uffff'];
+const intervalle = (a: Assignment): Intervalle =>
+  a.slot ? [a.slot.start, a.slot.end] : TOUTE_LA_PHASE;
+
+/**
+ * Plus grand nombre d'intervalles ouverts qui se recouvrent à un même instant (balayage).
+ * Deux créneaux qui se touchent (fin de l'un = début de l'autre) ne se recouvrent pas.
+ */
+export function maxSimultanes(intervalles: Intervalle[]): number {
+  const evts: [string, number][] = [];
+  for (const [d, f] of intervalles) if (d < f) evts.push([d, 1], [f, -1]);
+  evts.sort((x, y) => (x[0] < y[0] ? -1 : x[0] > y[0] ? 1 : x[1] - y[1]));
+  let courant = 0;
+  let max = 0;
+  for (const [, delta] of evts) {
+    courant += delta;
+    max = Math.max(max, courant);
+  }
+  return max;
+}
+
+/**
+ * Par cellule non interdite : n = drones présents en même temps (au pire moment), et
+ * n capables = idem parmi ceux qui ont les capacités requises (canServe).
+ */
 function compter(grid: Grid, assignments: Assignment[], opts: MetricsOptions) {
   const index = indexerGrille(grid);
   const tous = new Uint16Array(grid.cells.length);
   const capables = new Uint16Array(grid.cells.length);
+  const sert = (a: Assignment, cell: Grid['cells'][number]) =>
+    !opts.canServe || opts.canServe(a.resourceId, cell);
+
+  if (!assignments.some((a) => a.slot)) {
+    // Cas courant, sans créneaux : tout le monde vole en même temps, un simple comptage suffit.
+    for (const a of assignments) {
+      pourChaqueCelluleAPortee(grid, index, a.position.coordinates, a.radiusM, (cell) => {
+        tous[cell.id]++;
+        if (sert(a, cell)) capables[cell.id]++;
+      });
+    }
+    return { index, tous, capables };
+  }
+
+  const presents: Intervalle[][] = grid.cells.map(() => []);
+  const presentsCapables: Intervalle[][] = grid.cells.map(() => []);
   for (const a of assignments) {
     pourChaqueCelluleAPortee(grid, index, a.position.coordinates, a.radiusM, (cell) => {
-      tous[cell.id]++;
-      if (!opts.canServe || opts.canServe(a.resourceId, cell)) capables[cell.id]++;
+      presents[cell.id].push(intervalle(a));
+      if (sert(a, cell)) presentsCapables[cell.id].push(intervalle(a));
     });
+  }
+  for (let i = 0; i < grid.cells.length; i++) {
+    tous[i] = maxSimultanes(presents[i]);
+    capables[i] = maxSimultanes(presentsCapables[i]);
   }
   return { index, tous, capables };
 }
