@@ -74,6 +74,7 @@ export const API = {
   events: (id: string) => `/api/missions/${id}/events`,
   recompute: (id: string) => `/api/missions/${id}/recompute`,
   acceptRecompute: (id: string) => `/api/missions/${id}/recompute/accept`,
+  rejectRecompute: (id: string) => `/api/missions/${id}/recompute/reject`,
   coverage: (id: string, pid: string, phase: number) =>
     `/api/missions/${id}/proposals/${pid}/coverage?phase=${phase}`,
   liveWs: (id: string) => `/api/missions/${id}/live`,

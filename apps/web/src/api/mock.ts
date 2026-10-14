@@ -163,6 +163,12 @@ export const mockApi: Api = {
     publish();
     return delay(live);
   },
+  rejectRecompute: () => {
+    const live = liveOrThrow();
+    live.pendingRecompute = undefined;
+    publish();
+    return delay(live);
+  },
   // Pas de réseau en mock : météo calme marquée comme valeur par défaut.
   weather: () =>
     delay({

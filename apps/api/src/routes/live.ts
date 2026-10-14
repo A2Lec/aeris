@@ -71,6 +71,15 @@ const plugin: FastifyPluginAsync = async (app) => {
     return live;
   });
 
+  /** Le commandement refuse le recalcul proposé : le dispositif en place ne change pas. */
+  app.post<IdParams>('/missions/:id/recompute/reject', async (req) => {
+    const st = getOr404(req.params.id);
+    const live = liveOf(st);
+    live.pendingRecompute = undefined;
+    publishLive(st.mission.id, live);
+    return live;
+  });
+
   /** Flux temps réel vers le poste : un message { type: 'live', live } à chaque changement. */
   app.get<IdParams>('/missions/:id/live', { websocket: true }, (socket, req) => {
     const st = store.get(req.params.id);
