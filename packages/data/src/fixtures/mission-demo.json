@@ -16,22 +16,70 @@
   },
   "environment": "rural",
   "maxDrones": 5,
+  "period": {
+    "start": "2026-10-14T08:00:00+02:00",
+    "end": "2026-10-14T12:00:00+02:00"
+  },
   "phaseCount": 2,
   "gridCellM": 100,
   "pilots": [
-    { "id": "p1", "name": "ADJ Martin", "level": "TP2" },
-    { "id": "p2", "name": "MDL Durand", "level": "TP2" },
-    { "id": "p3", "name": "GND Petit", "level": "TP1" },
-    { "id": "p4", "name": "GND Leroy", "level": "TP1" },
-    { "id": "p5", "name": "GND Moreau", "level": "TP1" },
-    { "id": "p6", "name": "MDL Bernard", "level": "TP2" }
+    {
+      "id": "p1",
+      "name": "ADJ Martin",
+      "level": "TP2"
+    },
+    {
+      "id": "p2",
+      "name": "MDL Durand",
+      "level": "TP2"
+    },
+    {
+      "id": "p3",
+      "name": "GND Petit",
+      "level": "TP1"
+    },
+    {
+      "id": "p4",
+      "name": "GND Leroy",
+      "level": "TP1"
+    },
+    {
+      "id": "p5",
+      "name": "GND Moreau",
+      "level": "TP1"
+    },
+    {
+      "id": "p6",
+      "name": "MDL Bernard",
+      "level": "TP2"
+    }
   ],
   "resources": [
-    { "id": "r1", "pilotId": "p1", "droneModelId": "matrice-4t" },
-    { "id": "r2", "pilotId": "p2", "droneModelId": "mavic-3e" },
-    { "id": "r3", "pilotId": "p3", "droneModelId": "mini-5" },
-    { "id": "r4", "pilotId": "p4", "droneModelId": "mavic-3e" },
-    { "id": "r5", "pilotId": "p5", "droneModelId": "mini-5" },
+    {
+      "id": "r1",
+      "pilotId": "p1",
+      "droneModelId": "matrice-4t"
+    },
+    {
+      "id": "r2",
+      "pilotId": "p2",
+      "droneModelId": "mavic-3e"
+    },
+    {
+      "id": "r3",
+      "pilotId": "p3",
+      "droneModelId": "mini-5"
+    },
+    {
+      "id": "r4",
+      "pilotId": "p4",
+      "droneModelId": "mavic-3e"
+    },
+    {
+      "id": "r5",
+      "pilotId": "p5",
+      "droneModelId": "mini-5"
+    },
     {
       "id": "r6",
       "pilotId": "p6",
@@ -56,7 +104,10 @@
       "name": "Lisière nord — recherche de personne",
       "level": 3,
       "action": "recherche",
-      "requires": { "minZoomX": 50, "thermal": true },
+      "requires": {
+        "minZoomX": 50,
+        "thermal": true
+      },
       "phases": [0],
       "geometry": {
         "type": "Polygon",

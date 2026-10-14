@@ -28,6 +28,7 @@ const testMission: Mission = {
   environment: 'rural',
   maxDrones: 10,
   phaseCount: 1,
+  period: { start: '2026-10-14T08:00:00Z', end: '2026-10-14T10:00:00Z' },
   gridCellM: 100,
   pilots: [
     { id: 'p1', name: 'Pilote 1', level: 'TP2' },
@@ -433,5 +434,24 @@ describe('Doctrine de séparation en cascade V1', () => {
     // Vérifier la présence du conflit résolu horizontalement
     expect(res.conflicts.some((c) => c.resolvedBy === 'horizontal')).toBe(true);
     expect(res.diagnostics.some((d) => d.includes('séparation horizontale'))).toBe(true);
+  });
+});
+
+describe('Sans période d’arrêté', () => {
+  it('n’invente pas de créneau : garde le vertical, renonce au reste, et le dit', () => {
+    const ids = ['r1', 'r2', 'r3', 'r4', 'r5', 'r6'];
+    const ctx = makeCtx({
+      period: undefined,
+      resources: ids.map((id) => ({ id, pilotId: 'p1', droneModelId: 'd-tp1', available: true })),
+    });
+    const point: [number, number] = [1.25, 43.65];
+    const res = deconflict(
+      ids.map((id) => makeDroneAssignment(id, point, 1000, 50)),
+      ctx,
+    );
+    expect(res.assignments.every((a) => a.slot === undefined)).toBe(true);
+    expect(res.assignments.length).toBeGreaterThan(0);
+    expect(res.assignments.length).toBeLessThan(ids.length);
+    expect(res.diagnostics.some((d) => d.includes('sans période'))).toBe(true);
   });
 });

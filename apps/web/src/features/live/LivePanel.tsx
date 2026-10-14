@@ -31,6 +31,8 @@ export function LivePanel() {
         {connected ? '● Temps réel' : '○ Reconnexion…'} — phase {live.phase + 1}/
         {mission.phaseCount}
         {live.weather && ` — vent ${live.weather.windMs} m/s (rafales ${live.weather.gustMs})`}
+        {live.weather?.source === 'repli' && ' ⚠ météo indisponible, valeurs par défaut'}
+        {live.weather?.source === 'cache' && ' ⚠ dernière météo connue'}
       </p>
       <MetricsCard metrics={live.metrics} />
 
@@ -74,6 +76,7 @@ export function LivePanel() {
                 temperatureC: 12,
                 isDay: true,
                 fetchedAt: new Date().toISOString(),
+                source: 'manuel',
               },
             })
           }

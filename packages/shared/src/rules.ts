@@ -1,4 +1,11 @@
-import type { DroneModel, Environment, PilotLevel, PilotRule, Requirement } from './domain';
+import type {
+  DroneModel,
+  Environment,
+  Mission,
+  PilotLevel,
+  PilotRule,
+  Requirement,
+} from './domain';
 
 /** Poids d'une cellule selon son niveau de priorité (0 = hors zone prioritaire). */
 export const PRIORITY_WEIGHTS: Record<number, number> = { 0: 1, 1: 2, 2: 4, 3: 8 };
@@ -26,4 +33,24 @@ export function meetsRequirement(model: DroneModel, req: Requirement): boolean {
   if (req.thermal && !model.thermal) return false;
   if (req.night && !model.night) return false;
   return true;
+}
+
+/**
+ * Créneau horaire d'une phase : la période de l'arrêté découpée en `phaseCount` parts égales.
+ * `undefined` si la mission n'a pas de période valide : ne JAMAIS inventer de date.
+ * Sert à la séparation temporelle (créneaux) et à la météo par phase.
+ */
+export function phaseWindow(
+  mission: Pick<Mission, 'period' | 'phaseCount'>,
+  phase: number,
+): { start: string; end: string } | undefined {
+  if (!mission.period) return undefined;
+  const start = Date.parse(mission.period.start);
+  const end = Date.parse(mission.period.end);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return undefined;
+  const step = (end - start) / Math.max(1, mission.phaseCount);
+  return {
+    start: new Date(start + phase * step).toISOString(),
+    end: new Date(start + (phase + 1) * step).toISOString(),
+  };
 }

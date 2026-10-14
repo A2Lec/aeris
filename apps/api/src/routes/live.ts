@@ -2,7 +2,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import { AcceptRequest, MissionEvent, type LiveState, type MissionState } from '@aeris/shared';
 import { HttpError, getOr404, onLive, publishLive, store } from '../store';
 import { applyEvent } from '../services/events';
-import { buildProposal, coverageFor, metricsFor } from '../services/pipeline';
+import { buildProposal, coverageFor, metricsFor, stabilityFor } from '../services/pipeline';
 
 type IdParams = { Params: { id: string } };
 
@@ -31,6 +31,13 @@ const plugin: FastifyPluginAsync = async (app) => {
       previous: live.assignments,
       phases: [live.phase],
     });
+    // Ce qui change par rapport aux positions réelles : l'opérateur valide en connaissance de cause.
+    proposal.stability = stabilityFor(
+      st.mission,
+      live.phase,
+      live.assignments,
+      proposal.assignments,
+    );
     live.pendingRecompute = proposal;
     publishLive(st.mission.id, live);
     return proposal;

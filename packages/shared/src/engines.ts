@@ -15,6 +15,7 @@ import type {
   Requirement,
   Resource,
   SolveStatus,
+  Stability,
   Strategy,
   Weather,
 } from './domain';
@@ -34,6 +35,8 @@ export interface Cell {
   urban: boolean;
   /** Plafond local (zone hauteur_limitee). */
   maxHeightM?: number;
+  /** Drones voulus en même temps : plus grand `redundancy` des zones actives qui la contiennent (1 sinon). */
+  redundancy: number;
 }
 
 export interface Grid {
@@ -61,6 +64,19 @@ export type MetricsEngine = (
   assignments: Assignment[],
   opts?: MetricsOptions,
 ) => Metrics;
+
+export interface StabilityOptions extends MetricsOptions {
+  /** En dessous, un couple n'est pas compté comme déplacé (arrondis du solveur). Défaut : 50 m. */
+  minShiftM?: number;
+}
+
+/** Écart entre deux dispositifs d'une même phase (`grid.phase`) ; les autres phases sont ignorées. */
+export type StabilityEngine = (
+  grid: Grid,
+  before: Assignment[],
+  after: Assignment[],
+  opts?: StabilityOptions,
+) => Stability;
 
 /** Géométries couverture / trous / chevauchement d'une phase, pour la carte. */
 export type CoverageGeometryBuilder = (grid: Grid, assignments: Assignment[]) => CoverageLayers;
