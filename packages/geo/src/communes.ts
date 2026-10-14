@@ -5,28 +5,13 @@
  * Une cellule appartient à la commune où tombe son centre.
  */
 import { bbox, booleanPointInPolygon } from '@turf/turf';
-import type { AreaGeom, Assignment, Grid } from '@aeris/shared';
+import type { Assignment, Commune, CommuneCoverage, Grid } from '@aeris/shared';
 import { presenceAuPireMoment } from './presence';
 import { indexerGrille } from './voisinage';
 
-// TODO(P1) : remplacer Metrics.communes (liste de noms) par CommuneConcernee[].
-
-/** Contour d'une commune (même forme que `Commune` de @aeris/data). */
-export interface ContourCommune {
-  code: string;
-  nom: string;
-  contour: AreaGeom;
-}
-
-export interface CommuneConcernee {
-  /** Code INSEE. */
-  code: string;
-  nom: string;
-  /** Surface de la commune dans la zone de travail, hors zones interdites. */
-  areaM2: number;
-  coveredAreaM2: number;
-  uncoveredAreaM2: number;
-}
+/** Contour d'une commune (`Commune` de @aeris/shared). */
+export type ContourCommune = Commune;
+export type CommuneConcernee = CommuneCoverage;
 
 /** Communes touchées par la zone de travail, de la plus couverte à la moins couverte. */
 export function communesConcernees(

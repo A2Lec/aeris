@@ -1,6 +1,14 @@
 import { randomUUID } from 'node:crypto';
-import { drones, pilotRules } from '@aeris/data';
-import { buildGrid, computeMetrics, coverageGeometry, mesurerStabilite } from '@aeris/geo';
+import { communesDemo, drones, pilotRules } from '@aeris/data';
+import {
+  buildGrid,
+  communesConcernees,
+  computeMetrics,
+  couchesParCouple,
+  couvertureParZone,
+  coverageGeometry,
+  mesurerStabilite,
+} from '@aeris/geo';
 import { solve } from '@aeris/solver';
 import { deconflict } from '@aeris/deconflict';
 import { excludedByWeather, fetchWeather } from '@aeris/weather';
@@ -8,6 +16,7 @@ import {
   meetsRequirement,
   type Assignment,
   type Cell,
+  type Grid,
   type Metrics,
   type Mission,
   type Proposal,
@@ -34,8 +43,22 @@ export function canServeFor(mission: Mission) {
   };
 }
 
+/**
+ * Métriques complètes d'une phase : celles du moteur, plus ce qui demande la mission ou des
+ * données externes (couverture par zone prioritaire, communes concernées).
+ * Les communes ne sont connues qu'autour de la zone de démo (packages/data) : ailleurs, liste vide.
+ */
+function fullMetrics(mission: Mission, grid: Grid, assignments: Assignment[]): Metrics {
+  const canServe = canServeFor(mission);
+  return {
+    ...computeMetrics(grid, assignments, { canServe }),
+    communes: communesConcernees(grid, assignments, communesDemo),
+    byZone: couvertureParZone(mission, grid, assignments, { canServe }),
+  };
+}
+
 export function metricsFor(mission: Mission, phase: number, assignments: Assignment[]): Metrics {
-  return computeMetrics(buildGrid(mission, phase), assignments, { canServe: canServeFor(mission) });
+  return fullMetrics(mission, buildGrid(mission, phase), assignments);
 }
 
 export interface BuildOptions {
@@ -47,11 +70,12 @@ export interface BuildOptions {
 }
 
 export function coverageFor(mission: Mission, phase: number, assignments: Assignment[]) {
-  return coverageGeometry(
-    buildGrid(mission, phase),
-    assignments.filter((a) => a.phase === phase),
-    { canServe: canServeFor(mission) },
-  );
+  const grid = buildGrid(mission, phase);
+  const ofPhase = assignments.filter((a) => a.phase === phase);
+  return {
+    ...coverageGeometry(grid, ofPhase, { canServe: canServeFor(mission) }),
+    byResource: couchesParCouple(grid, ofPhase),
+  };
 }
 
 /** Écart entre le dispositif en place et un recalcul, sur une phase. */
@@ -76,7 +100,6 @@ export async function buildProposal(
   // Une météo de repli n'est pas une mesure : on ne s'en sert pas pour écarter des drones.
   const realWeather = opts.weather?.source === 'repli' ? undefined : opts.weather;
   const excluded = realWeather ? excludedByWeather(mission.resources, drones, realWeather) : {};
-  const canServe = canServeFor(mission);
   const assignments: Assignment[] = [];
   const metricsByPhase: Metrics[] = [];
   const diagnostics: string[] = [];
@@ -108,7 +131,7 @@ export async function buildProposal(
       phase,
     });
     assignments.push(...dc.assignments);
-    metricsByPhase.push(computeMetrics(grid, dc.assignments, { canServe }));
+    metricsByPhase.push(fullMetrics(mission, grid, dc.assignments));
     for (const d of [...res.diagnostics, ...dc.diagnostics])
       diagnostics.push(`Phase ${phase + 1} — ${d}`);
     if (SEVERITY[res.status] > SEVERITY[status]) status = res.status;

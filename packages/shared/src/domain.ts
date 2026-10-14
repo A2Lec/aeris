@@ -134,6 +134,37 @@ export const Assignment = z.object({
 });
 export type Assignment = z.infer<typeof Assignment>;
 
+/** Contour d'une commune (packages/data, extrait de geo.api.gouv.fr / IGN Admin Express). */
+export const Commune = z.object({ code: z.string(), nom: z.string(), contour: AreaGeom });
+export type Commune = z.infer<typeof Commune>;
+
+/** Commune touchée par la zone de travail, pour une phase. */
+export const CommuneCoverage = z.object({
+  /** Code INSEE. */
+  code: z.string(),
+  nom: z.string(),
+  /** Surface de la commune dans la zone de travail, hors zones interdites. */
+  areaM2: z.number(),
+  coveredAreaM2: z.number(),
+  uncoveredAreaM2: z.number(),
+});
+export type CommuneCoverage = z.infer<typeof CommuneCoverage>;
+
+/** Couverture d'une zone prioritaire active dans la phase. */
+export const ZoneCoverage = z.object({
+  zoneId: z.string(),
+  name: z.string(),
+  level: z.number(),
+  /** Cellules non interdites de la zone ; 0 si la zone est plus petite qu'une cellule. */
+  cells: z.number(),
+  areaM2: z.number(),
+  /** Part vue par au moins un drone à tout instant. 0..1. */
+  coverage: z.number(),
+  /** Part vue par au moins un drone capable (zoom, thermique, nuit) à tout instant. 0..1. */
+  served: z.number(),
+});
+export type ZoneCoverage = z.infer<typeof ZoneCoverage>;
+
 export const Metrics = z.object({
   /** Part de la zone de travail couverte (hors zones interdites), 0..1. */
   coverage: z.number(),
@@ -146,7 +177,10 @@ export const Metrics = z.object({
   coveredAreaM2: z.number(),
   uncoveredAreaM2: z.number(),
   forbiddenAreaM2: z.number(),
-  communes: z.array(z.string()).default([]),
+  /** Communes concernées, de la plus couverte à la moins couverte (remplies par l'API). */
+  communes: z.array(CommuneCoverage).default([]),
+  /** Couverture zone prioritaire par zone (remplie par l'API, qui a la mission). */
+  byZone: z.array(ZoneCoverage).optional(),
   /** Redondance (zones avec `redundancy` ≥ 2) — optionnels tant que @aeris/geo ne les calcule pas. */
   /** Part de la surface couverte vue par 2 à r drones en même temps (chevauchement voulu). */
   usefulOverlap: z.number().optional(),
@@ -200,6 +234,14 @@ export const Proposal = z.object({
 export type Proposal = z.infer<typeof Proposal>;
 
 /** Géométries de couverture d'une phase, pour la carte (calculées par @aeris/geo). */
+/** Surface dont un couple est responsable (le plus proche parmi ceux qui la couvrent). */
+export const ResourceCoverage = z.object({
+  resourceId: z.string(),
+  geometry: MultiPolygonGeom,
+  areaM2: z.number(),
+});
+export type ResourceCoverage = z.infer<typeof ResourceCoverage>;
+
 export const CoverageLayers = z.object({
   phase: z.number().int().min(0),
   /** Surface couverte par au moins un drone. */
@@ -212,6 +254,8 @@ export const CoverageLayers = z.object({
   redundancyMissing: MultiPolygonGeom.optional(),
   /** Cellules vues par plus de r drones en même temps. */
   superfluousOverlap: MultiPolygonGeom.optional(),
+  /** « Qui couvre quoi » : une surface par couple engagé. */
+  byResource: z.array(ResourceCoverage).optional(),
 });
 export type CoverageLayers = z.infer<typeof CoverageLayers>;
 

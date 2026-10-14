@@ -71,7 +71,7 @@ export const computeMetrics: MetricsEngine = (grid, assignments, opts = {}) => {
     coveredAreaM2: covered * area,
     uncoveredAreaM2: (coverable - covered) * area,
     forbiddenAreaM2: forbidden * area,
-    // TODO(P1) : remplir avec communesConcernees(grid, assignments, communesDemo) dans le pipeline.
+    // Communes et zones : remplies par le pipeline de l'API, qui a les contours et la mission.
     communes: [],
     usefulOverlap: covered ? useful / covered : 0,
     superfluousOverlap: covered ? superfluous / covered : 0,
