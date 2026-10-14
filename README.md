@@ -152,6 +152,66 @@ Points de couplage à anticiper :
 8. **Protection de `main`** (P1, une fois, dans GitHub → Settings → Branches) : interdire le push direct, exiger la CI verte (`check`) et la revue du propriétaire (CODEOWNERS) avant merge. Sans ça, la CI informe mais ne bloque rien.
 9. **CODEOWNERS** : remplacer `@p1` … `@p6` par les identifiants GitHub réels.
 
+## Consignes pour les agents IA (Claude, Copilot, Cursor…)
+
+Tout agent qui code sur ce dépôt **lit cette section en entier avant d'écrire une ligne** et la respecte sans exception. P1 relit et merge toutes les PR : un agent ne merge jamais lui-même.
+
+### Avant de commencer
+
+1. Savoir pour quelle personne (P2 … P6) l'agent travaille, donc **quels dossiers il possède** (tableau « Répartition »). Ne pas deviner : demander si ce n'est pas précisé.
+2. Lire `packages/shared` (contrats), la section « Contrats et tests » et le code existant du dossier.
+3. Partir d'un `main` à jour : `git switch main && git pull --rebase`.
+
+### Périmètre : ce qu'un agent peut modifier
+
+- **Oui** : les fichiers des dossiers possédés par sa personne, et les tests de ces dossiers.
+- **Non, jamais** : `packages/shared`, `packages/contracts`, `apps/api`, `pnpm-lock.yaml`, les `package.json`, `.github/`, la configuration racine, les dossiers des autres. Si un changement y est nécessaire (nouveau champ, nouvelle route, nouvelle dépendance), **s'arrêter** et le décrire dans la PR (section « Besoins hors périmètre ») ; P1 s'en charge dans une PR dédiée.
+- Ne jamais contourner un contrat : pas de `as any`, `@ts-ignore`, `@ts-expect-error`, `it.skip`, `.only`, seuil assoupli ni test de contrat modifié pour « faire passer ». Un contrat qui semble faux se signale dans la PR.
+
+### Branches
+
+- Une branche par sujet, créée depuis `main` : `p<N>/<sujet-court>` en kebab-case, ex. `p2/ilp-highs`, `p5/dessin-zones`.
+- **Jamais de commit ni de push sur `main`.** Jamais de `git push --force` ; après un rebase de sa propre branche uniquement : `git push --force-with-lease`.
+- Durée de vie courte (1 à 2 h) : mieux vaut deux petites PR qu'une grosse.
+- Se remettre à jour par rebase, pas par merge : `git fetch && git rebase origin/main`. Conflit sur un fichier hors périmètre ? Ne pas le résoudre au hasard : garder la version de `main` et prévenir.
+
+### Commits
+
+- Petits et cohérents : un commit = un changement compréhensible seul, qui compile.
+- Message au format Conventional Commits, en français, scope = package : `feat(solver): modèle ILP avec repli glouton`, `fix(geo): plafond local ignoré en bordure`, `test(deconflict): cas des créneaux`. Types : `feat`, `fix`, `refactor`, `test`, `docs`, `perf`, `chore`.
+- Ajouter la ligne `Co-Authored-By:` de l'agent (déclaration d'usage de l'IA exigée par le hackathon).
+- Ne commiter ni secret, ni `.env`, ni fichier généré (`dist/`, `node_modules/`), ni fichier sans rapport avec le sujet. Vérifier avec `git status` et `git diff --staged` avant chaque commit.
+
+### Avant d'ouvrir la PR (tout doit passer)
+
+```bash
+git fetch && git rebase origin/main
+pnpm format
+pnpm typecheck
+pnpm test
+```
+
+Ne jamais ouvrir une PR rouge en prétendant qu'elle est prête : si quelque chose échoue, ouvrir la PR en **brouillon (draft)** et écrire ce qui échoue et pourquoi.
+
+### Pull requests
+
+- Cible `main`, relecteur **P1**. Une PR = un sujet, idéalement < 400 lignes modifiées (hors snapshot de mocks).
+- Titre au format d'un commit : `feat(solver): ILP HiGHS avec limite de 3 s`.
+- Description selon `.github/pull_request_template.md` : quoi, pourquoi, comment tester, impact sur les contrats, besoins hors périmètre, usage de l'IA.
+- Après la relecture : corriger par **nouveaux commits** (pas de réécriture de l'historique pendant la revue), répondre à chaque commentaire, ne pas fermer un fil soi-même.
+- Ne pas merger, ne pas approuver sa propre PR, ne pas modifier la protection de branche.
+
+### Code
+
+- TypeScript strict, style du code voisin (Prettier fait foi), noms et commentaires **en français**, commentaires utiles seulement (le pourquoi, pas le quoi).
+- Utiliser les types et schémas de `@aeris/shared` ; ne jamais redéfinir localement un type qui y existe.
+- Moteurs (`packages/*`) : fonctions pures, sans état global, sans réseau (sauf `fetchWeather`), sans `console.log` laissé.
+- Front : chaque fonctionnalité garde son store dans `features/<nom>/store.ts` ; appels réseau uniquement via `api/client.ts` ; tester avec `pnpm dev:mock`.
+- Pas de nouvelle dépendance (voir règle 2 des conflits de merge).
+- Chaque comportement nouveau a un test dans son package ; les tests n'appellent pas le réseau.
+- Garder les marqueurs `TODO(Px)` des autres ; retirer les siens quand c'est fait.
+- Rester dans le sujet : pas de refactoring opportuniste, pas de reformatage de fichiers non touchés.
+
 ## Planning (8 h)
 
 | Heure             | Jalon                                                                                          |
