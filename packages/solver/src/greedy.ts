@@ -12,16 +12,16 @@ import {
   type Problem,
 } from './problem';
 
-/** Nombre d'itérations du recuit (≈ 100 ms sur la mission de démo). */
+/**
+ * Nombre d'itérations du recuit (≈ 100 ms sur la mission de démo). Pas de chronomètre, ni ici
+ * ni dans l'affinage : le résultat ne doit pas dépendre de la charge de la machine (CI, démo).
+ */
 const ITERATIONS = 30_000;
-/** Garde-fou de temps : le recuit s'arrête quoi qu'il arrive. */
-const TIME_BUDGET_MS = 800;
 /** Température finale relative à la température initiale. */
 const FINAL_TEMPERATURE_RATIO = 1e-3;
 /** Affinage final : rayon de recherche autour de chaque drone, et nombre max de passes. */
 const REFINE_RADIUS_M = 300;
 const REFINE_ROUNDS = 6;
-const REFINE_BUDGET_MS = 400;
 /** Probabilité de chercher le nouveau candidat près de la position courante. */
 const LOCAL_MOVE_PROBABILITY = 0.7;
 
@@ -39,7 +39,10 @@ function rng(seed: number): () => number {
 
 export function seedOf(ctx: SolveContext): number {
   let h = 2166136261;
-  for (const ch of `${ctx.mission.id}|${ctx.phase}|${ctx.strategy}`)
+  // Graine tirée du CONTENU de la mission, pas de son identifiant (aléatoire à chaque création) :
+  // deux missions identiques donnent le même dispositif.
+  const { id: _id, name: _name, ...contenu } = ctx.mission;
+  for (const ch of `${JSON.stringify(contenu)}|${ctx.phase}|${ctx.strategy}`)
     h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
   return h;
 }
@@ -200,14 +203,12 @@ export function anneal(p: Problem, opts: AnnealOptions = {}): Int32Array {
   const meanGain = Math.max(coverValue / Math.max(s.engaged, 1), p.totalWeight * 0.01, 1e-9);
   const t0 = meanGain * (opts.temperature ?? 0.1);
   const cooling = Math.pow(FINAL_TEMPERATURE_RATIO, 1 / iterations);
-  const deadline = Date.now() + TIME_BUDGET_MS;
 
   let best = s.choice.slice();
   let bestValue = s.value;
   let temp = t0;
 
   for (let it = 0; it < iterations; it++, temp *= cooling) {
-    if ((it & 1023) === 0 && Date.now() > deadline) break;
     const k = movable[Math.floor(rand() * movable.length)]!;
     const j = s.choice[k]!;
     const u = p.usable[k]!;
@@ -285,8 +286,9 @@ export function refine(p: Problem, choice: Int32Array): Int32Array {
     return j;
   };
 
-  const deadline = Date.now() + REFINE_BUDGET_MS;
-  for (let round = 0; round < REFINE_ROUNDS && Date.now() < deadline; round++) {
+  // Nombre de passes borné par REFINE_ROUNDS, sans limite de temps (déterminisme).
+  const deadline = Number.POSITIVE_INFINITY;
+  for (let round = 0; round < REFINE_ROUNDS; round++) {
     let improved = false;
     p.usable.forEach((u, k) => {
       const j = s.choice[k]!;

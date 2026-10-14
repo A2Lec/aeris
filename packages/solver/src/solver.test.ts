@@ -61,7 +61,14 @@ describe('recuit simulé', () => {
     strategy,
   });
 
-  it('le recuit est déterministe (hors coupure par le garde-fou de temps)', () => {
+  it('deux missions identiques (identifiants différents) donnent le même dispositif', () => {
+    const ctx = ctxFor('priorite');
+    const a = greedySolve(ctx);
+    const b = greedySolve({ ...ctx, mission: { ...ctx.mission, id: 'autre-id', name: 'Copie' } });
+    expect(b.assignments).toEqual(a.assignments);
+  });
+
+  it('le recuit est déterministe', () => {
     const p = buildProblem(ctxFor('priorite'));
     if (!isProblem(p)) throw new Error('problème attendu');
     // Peu d'itérations : on reste sous le budget de temps même sur une machine chargée.
@@ -165,7 +172,7 @@ describe('trous et zones prioritaires', () => {
     }
   });
 
-  it('rend la meilleure solution mais « infaisable » quand des trous restent', () => {
+  it('rend la meilleure solution (infaisable seulement si HOLES_ARE_INFEASIBLE) quand des trous restent', () => {
     const res = greedySolve(ctxOf(mission));
     expect(res.assignments.length).toBeGreaterThan(0);
     if (HOLES_ARE_INFEASIBLE) {

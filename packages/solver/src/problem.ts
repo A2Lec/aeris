@@ -71,10 +71,12 @@ export const PRIORITY_DRONE_MIN_SHARE = 0.2;
  */
 export const HOLE_FACTOR = 100;
 /**
- * Une solution qui laisse des trous est rendue avec le statut « infaisable » (et la meilleure
- * solution trouvée, pour que l'opérateur voie ce qui manque). Choix de l'équipe : aucun trou toléré.
+ * Des trous rendent-ils la solution « infaisable » ? Non : « infaisable » veut dire qu'AUCUN
+ * dispositif valide n'existe (pas de moyen, zone prioritaire impossible à tenir…). Un dispositif
+ * valide mais incomplet reste « faisable », avec ses trous chiffrés dans les diagnostics. Sinon,
+ * avec 5 drones sur la démo, tout serait infaisable et l'interface bloquerait « Appliquer ».
  */
-export const HOLES_ARE_INFEASIBLE = true;
+export const HOLES_ARE_INFEASIBLE = false;
 
 /** Stratégie « économie de moyens » : un couple doit apporter au moins ça pour être engagé. */
 export const MIN_MARGINAL_GAIN = 0.03;
