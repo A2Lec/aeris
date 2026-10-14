@@ -5,7 +5,13 @@ import {
   type Deconflicter,
   type Grid,
 } from '@aeris/shared';
-import { distanceM } from '@aeris/geo';
+import {
+  distanceM,
+  fusionner,
+  indexerGrille,
+  pourChaqueCelluleDuDrone,
+  type IndexGrille,
+} from '@aeris/geo';
 
 /** Hauteur par défaut d'une tranche d'altitude attribuée à un couple (30 m). */
 export const DEFAULT_BAND_M = 30;
@@ -98,6 +104,83 @@ function getPhaseSlots(
 interface Candidate {
   assignment: Assignment;
   ceiling: number;
+  /** Cellules de la zone de travail survolées (disque, restreint au secteur s'il y en a un). */
+  cells: Set<number>;
+}
+
+/**
+ * Chevauchement horizontal entre deux candidats. Deux drones à secteur : leurs zones survolées
+ * se recoupent-elles ? Sinon, règle du contrat : les disques se recoupent-ils ?
+ */
+function chevauche(a: Candidate, b: Candidate): boolean {
+  if (!a.assignment.sector || !b.assignment.sector) {
+    return horizontalOverlap({ ...a.assignment, sector: undefined }, b.assignment);
+  }
+  const [petit, grand] = a.cells.size <= b.cells.size ? [a.cells, b.cells] : [b.cells, a.cells];
+  for (const id of petit) if (grand.has(id)) return true;
+  return false;
+}
+
+interface Decision {
+  ceiling: number;
+  sector?: Assignment['sector'];
+  cells: Set<number>;
+  diagnostic?: string;
+}
+
+/**
+ * Zone à hauteur limitée (terrain militaire…) sous le disque d'un drone : CONTOURNER ou DESCENDRE.
+ *  - Contourner (par défaut) : le drone garde son plafond, son secteur devient son disque privé
+ *    des cellules plafonnées ; il ne les survole pas.
+ *  - Descendre : seulement si la zone contient des cellules prioritaires qu'aucun drone déjà
+ *    autorisé à cette hauteur (ex. TP1 rural, 50 m) ne peut atteindre, ou si contourner ne
+ *    laisse rien à couvrir. Le drone est alors plafonné sur tout son disque (règle d'origine).
+ */
+function plafondOuContournement(
+  a: Assignment,
+  autres: Assignment[],
+  grid: Grid,
+  index: IndexGrille,
+): Decision {
+  const disque: number[] = [];
+  pourChaqueCelluleDuDrone(grid, index, a, (cell) => disque.push(cell.id));
+  const plafonnees = disque.filter(
+    (id) => (grid.cells[id].maxHeightM ?? Infinity) < a.altitude.maxM,
+  );
+  if (plafonnees.length === 0) {
+    return { ceiling: a.altitude.maxM, cells: new Set(disque) };
+  }
+  const plafondBas = Math.min(...plafonnees.map((id) => grid.cells[id].maxHeightM!));
+  const libres = disque.filter((id) => !plafonnees.includes(id));
+  const prioritairesOrphelines = plafonnees.filter((id) => {
+    const cell = grid.cells[id];
+    if (cell.priorityLevel === 0) return false;
+    return !autres.some(
+      (o) =>
+        o !== a &&
+        o.altitude.maxM <= cell.maxHeightM! &&
+        distanceM(o.position.coordinates, cell.center) <= o.radiusM,
+    );
+  });
+  const surface = (n: number) => Math.round((n * grid.cellAreaM2) / 1e4);
+
+  if (prioritairesOrphelines.length > 0 || libres.length === 0) {
+    return {
+      ceiling: plafondBas,
+      cells: new Set(disque),
+      diagnostic:
+        libres.length === 0
+          ? `${a.resourceId} : descend à ${plafondBas} m, son disque est entièrement sous une zone à hauteur limitée`
+          : `${a.resourceId} : descend à ${plafondBas} m pour couvrir ${surface(prioritairesOrphelines.length)} ha de zone prioritaire sous une zone à hauteur limitée, qu'aucun drone volant bas n'atteint`,
+    };
+  }
+  const garde = new Set(libres);
+  return {
+    ceiling: a.altitude.maxM,
+    sector: fusionner(grid, index, (id) => garde.has(id)),
+    cells: garde,
+    diagnostic: `${a.resourceId} : contourne ${surface(plafonnees.length)} ha de zone à hauteur limitée (${plafondBas} m) et garde ${a.altitude.maxM} m`,
+  };
 }
 
 interface PlacedEntry {
@@ -160,7 +243,7 @@ function tryAllocateVertical(
   for (const c of candidates) {
     const occupied: Array<{ minM: number; maxM: number }> = [];
     for (const p of placed) {
-      if (horizontalOverlap(c.assignment, p.candidate.assignment)) {
+      if (chevauche(c, p.candidate)) {
         occupied.push(p.altitude);
       }
     }
@@ -179,7 +262,7 @@ function tryAllocateVertical(
 
     // Calcul d'une tranche adaptative proportionnée au nombre de drones concurrents dans ce créneau
     const competing = candidates.filter(
-      (cand) => horizontalOverlap(c.assignment, cand.assignment) && cand.ceiling <= c.ceiling,
+      (cand) => chevauche(c, cand) && cand.ceiling <= c.ceiling,
     ).length;
     const adaptiveHeight = Math.max(
       MIN_BAND_M,
@@ -216,7 +299,7 @@ function findHorizontalComponents(candidates: Candidate[]): Candidate[][] {
       const u = queue.shift()!;
       comp.push(candidates[u]);
       for (let v = 0; v < n; v++) {
-        if (!visited[v] && horizontalOverlap(candidates[u].assignment, candidates[v].assignment)) {
+        if (!visited[v] && chevauche(candidates[u], candidates[v])) {
           visited[v] = true;
           queue.push(v);
         }
@@ -246,15 +329,14 @@ export const deconflict: Deconflicter = (assignments, ctx) => {
   const conflicts: Conflict[] = [];
   const resourcesById = new Map(ctx.mission.resources.map((r) => [r.id, r]));
 
-  // 1. Calcul du plafond effectif de chaque couple sous les contraintes locales
+  // 1. Plafond de chaque couple : contourner une zone à hauteur limitée ou y descendre
+  const index = indexerGrille(ctx.grid);
   const viableCandidates: Candidate[] = [];
   for (const a of assignments) {
-    const ceiling = localCeiling(a, ctx.grid);
-    if (ceiling < a.altitude.maxM) {
-      diagnostics.push(
-        `${a.resourceId} : plafond abaissé à ${ceiling} m par contrainte locale (vs ${a.altitude.maxM} m)`,
-      );
-    }
+    const d = plafondOuContournement(a, assignments, ctx.grid, index);
+    if (d.diagnostic) diagnostics.push(d.diagnostic);
+    const assignment = d.sector ? { ...a, sector: d.sector } : a;
+    const ceiling = d.ceiling;
     if (ceiling <= FLOOR_M) {
       diagnostics.push(
         `${a.resourceId} : renoncement pour contrainte verticale (plafond ${ceiling} m ≤ plancher de sécurité ${FLOOR_M} m)`,
@@ -267,7 +349,7 @@ export const deconflict: Deconflicter = (assignments, ctx) => {
       });
       continue;
     }
-    viableCandidates.push({ assignment: a, ceiling });
+    viableCandidates.push({ assignment, ceiling, cells: d.cells });
   }
 
   // Tri prioritaire : positions imposées d'abord, puis plafonds les plus élevés, puis plus grand rayon
@@ -320,7 +402,7 @@ export const deconflict: Deconflicter = (assignments, ctx) => {
       // Enregistrement de la résolution des conflits horizontaux
       for (let i = 0; i < comp.length; i++) {
         for (let j = i + 1; j < comp.length; j++) {
-          if (horizontalOverlap(comp[i].assignment, comp[j].assignment)) {
+          if (chevauche(comp[i], comp[j])) {
             conflicts.push({
               a: comp[i].assignment.resourceId,
               b: comp[j].assignment.resourceId,
@@ -365,7 +447,7 @@ export const deconflict: Deconflicter = (assignments, ctx) => {
 
         const occupied: Array<{ minM: number; maxM: number }> = [];
         for (const p of currentSlotPlaced) {
-          if (horizontalOverlap(c.assignment, p.candidate.assignment)) {
+          if (chevauche(c, p.candidate)) {
             occupied.push(p.altitude);
           }
         }
@@ -379,7 +461,7 @@ export const deconflict: Deconflicter = (assignments, ctx) => {
 
           // Nombre attendu de drones concurrents dans ce créneau
           const competingTotal = comp.filter(
-            (cand) => horizontalOverlap(c.assignment, cand.assignment) && cand.ceiling <= c.ceiling,
+            (cand) => chevauche(c, cand) && cand.ceiling <= c.ceiling,
           ).length;
           const targetDronesPerSlot = Math.max(1, Math.ceil(competingTotal / phaseSlots.length));
 
@@ -426,7 +508,7 @@ export const deconflict: Deconflicter = (assignments, ctx) => {
       for (let j = i + 1; j < compPlaced.length; j++) {
         const p1 = compPlaced[i];
         const p2 = compPlaced[j];
-        if (horizontalOverlap(p1.candidate.assignment, p2.candidate.assignment)) {
+        if (chevauche(p1.candidate, p2.candidate)) {
           const method =
             p1.slot && p2.slot && p1.slot.start !== p2.slot.start ? 'temporel' : 'vertical';
           conflicts.push({
@@ -445,9 +527,7 @@ export const deconflict: Deconflicter = (assignments, ctx) => {
         `${un.assignment.resourceId} : renoncement pour saturation de l'espace aérien (conflits verticaux et temporels insolubles sous le plafond de ${un.ceiling} m)`,
       );
       // Associer le renoncement aux drones qui occupent la zone
-      const blocking = compPlaced.find((p) =>
-        horizontalOverlap(un.assignment, p.candidate.assignment),
-      );
+      const blocking = compPlaced.find((p) => chevauche(un, p.candidate));
       conflicts.push({
         a: un.assignment.resourceId,
         b: blocking ? blocking.candidate.assignment.resourceId : un.assignment.resourceId,
@@ -457,15 +537,19 @@ export const deconflict: Deconflicter = (assignments, ctx) => {
     }
   }
 
-  // Traçabilité Niveau 1 — Horizontal pour les drones séparés par secteurs dédiés
+  // Traçabilité Niveau 1 — Horizontal : drones à secteur dont les disques se recoupent mais
+  // pas les zones survolées.
   for (let i = 0; i < viableCandidates.length; i++) {
     for (let j = i + 1; j < viableCandidates.length; j++) {
-      const a = viableCandidates[i].assignment;
-      const b = viableCandidates[j].assignment;
+      const ci = viableCandidates[i];
+      const cj = viableCandidates[j];
+      const a = ci.assignment;
+      const b = cj.assignment;
       if (
         a.sector &&
         b.sector &&
-        distanceM(a.position.coordinates, b.position.coordinates) < a.radiusM + b.radiusM
+        distanceM(a.position.coordinates, b.position.coordinates) < a.radiusM + b.radiusM &&
+        !chevauche(ci, cj)
       ) {
         conflicts.push({
           a: a.resourceId,
@@ -480,11 +564,27 @@ export const deconflict: Deconflicter = (assignments, ctx) => {
     }
   }
 
-  // 3. Détection de tout conflit résiduel non résolu
-  const residualConflicts = detectConflicts(finalPlaced);
-  for (const rc of residualConflicts) {
-    conflicts.push(rc);
-    diagnostics.push(`Conflit non résolu ${rc.a} / ${rc.b} (phase ${rc.phase + 1})`);
+  // 3. Détection de tout conflit résiduel non résolu (mêmes zones survolées que ci-dessus)
+  const parId = new Map(viableCandidates.map((c) => [c.assignment.resourceId, c]));
+  for (let i = 0; i < finalPlaced.length; i++) {
+    for (let j = i + 1; j < finalPlaced.length; j++) {
+      const a = finalPlaced[i];
+      const b = finalPlaced[j];
+      const ca = parId.get(a.resourceId);
+      const cb = parId.get(b.resourceId);
+      const horizontal = ca && cb ? chevauche(ca, cb) : horizontalOverlap(a, b);
+      if (
+        a.phase === b.phase &&
+        horizontal &&
+        verticalOverlap(a.altitude, b.altitude) &&
+        slotsOverlap(a.slot, b.slot)
+      ) {
+        conflicts.push({ a: a.resourceId, b: b.resourceId, phase: a.phase });
+        diagnostics.push(
+          `Conflit non résolu ${a.resourceId} / ${b.resourceId} (phase ${a.phase + 1})`,
+        );
+      }
+    }
   }
 
   return {
