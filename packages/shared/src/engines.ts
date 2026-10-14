@@ -78,8 +78,15 @@ export type StabilityEngine = (
   opts?: StabilityOptions,
 ) => Stability;
 
-/** Géométries couverture / trous / chevauchement d'une phase, pour la carte. */
-export type CoverageGeometryBuilder = (grid: Grid, assignments: Assignment[]) => CoverageLayers;
+/**
+ * Géométries couverture / trous / chevauchement d'une phase, pour la carte. Les couches de
+ * redondance ne sont présentes que si une cellule exige r ≥ 2 (`canServe` : drones capables).
+ */
+export type CoverageGeometryBuilder = (
+  grid: Grid,
+  assignments: Assignment[],
+  opts?: MetricsOptions,
+) => CoverageLayers;
 
 // ─── Solveur (P2) ────────────────────────────────────────────────────────────
 

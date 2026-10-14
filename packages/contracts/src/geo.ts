@@ -102,6 +102,15 @@ export function metricsContract(computeMetrics: MetricsEngine, buildGrid: GridBu
             expect(m[k]).toBeGreaterThanOrEqual(0);
             expect(m[k]).toBeLessThanOrEqual(1);
           }
+          for (const k of ['usefulOverlap', 'superfluousOverlap', 'redundancyMet'] as const) {
+            if (m[k] === undefined) continue;
+            expect(m[k]).toBeGreaterThanOrEqual(0);
+            expect(m[k]).toBeLessThanOrEqual(1);
+          }
+          // Chevauchement voulu + superflu = tout le chevauchement.
+          if (m.usefulOverlap !== undefined && m.superfluousOverlap !== undefined) {
+            close(m.usefulOverlap + m.superfluousOverlap, m.overlap, 1e-9, 1e-9);
+          }
           close(
             m.coveredAreaM2 + m.uncoveredAreaM2 + m.forbiddenAreaM2,
             grid.cells.length * grid.cellAreaM2,
