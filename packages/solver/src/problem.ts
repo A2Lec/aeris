@@ -32,6 +32,22 @@ const OVERLAP_PENALTY: Record<Strategy, number> = {
   priorite: 0.05,
   economie_moyens: 0.1,
 };
+/**
+ * Chevauchement souhaité sur les zones prioritaires, dans [PRIORITY_OVERLAP_MIN, PRIORITY_OVERLAP_MAX] :
+ *   0 = pénalisé comme ailleurs (une seule couverture suffit) ;
+ *   1 = une seconde couverture d'une cellule prioritaire vaut autant que la première (redondance).
+ * Interpolation linéaire entre les deux. Codé en dur pour l'instant, en attendant le réglage côté front.
+ */
+export const PRIORITY_OVERLAP_MIN = 0;
+export const PRIORITY_OVERLAP_MAX = 1;
+export const PRIORITY_OVERLAP = 0.3;
+
+/** Ramène un réglage de chevauchement prioritaire dans les bornes autorisées. */
+export function clampPriorityOverlap(v: number): number {
+  if (!Number.isFinite(v)) return PRIORITY_OVERLAP_MIN;
+  return Math.min(PRIORITY_OVERLAP_MAX, Math.max(PRIORITY_OVERLAP_MIN, v));
+}
+
 /** Stratégie « économie de moyens » : un couple doit apporter au moins ça pour être engagé. */
 export const MIN_MARGINAL_GAIN = 0.03;
 
@@ -60,6 +76,8 @@ export interface Problem {
   /** Nombre max de couples engagés (arrêté). */
   maxEngaged: number;
   overlapPenalty: number;
+  /** Valeur d'une seconde couverture, par cellule (bonus si prioritaire, pénalité sinon). */
+  secondValue: Float64Array;
   /** Coût d'engagement d'un couple non imposé (non nul seulement en économie de moyens). */
   droneCost: number;
 }
@@ -187,8 +205,20 @@ export function buildProblem(ctx: SolveContext): Problem | SolveResult {
     totalWeight,
     maxEngaged: mission.maxDrones,
     overlapPenalty: OVERLAP_PENALTY[strategy],
+    secondValue: Float64Array.from(grid.cells, (c, i) => {
+      const alpha = OVERLAP_PENALTY[strategy];
+      const beta = c.priorityLevel > 0 ? clampPriorityOverlap(PRIORITY_OVERLAP) : 0;
+      return (beta - alpha * (1 - beta)) * weights[i]!;
+    }),
     droneCost: strategy === 'economie_moyens' ? MIN_MARGINAL_GAIN * totalWeight : 0,
   };
+}
+
+/** Valeur de la (n+1)-ième couverture de la cellule i (n couples la servent déjà). */
+export function marginal(p: Problem, i: number, n: number): number {
+  if (n === 0) return p.weights[i]!;
+  if (n === 1) return p.secondValue[i]!;
+  return -p.overlapPenalty * p.weights[i]!;
 }
 
 export function isProblem(p: Problem | SolveResult): p is Problem {
@@ -210,7 +240,7 @@ export function score(problem: Problem, choice: Int32Array): number {
   });
   for (let i = 0; i < count.length; i++) {
     const n = count[i]!;
-    if (n > 0) s += problem.weights[i]! * (1 - problem.overlapPenalty * (n - 1));
+    for (let m = 0; m < n; m++) s += marginal(problem, i, m);
   }
   return s;
 }

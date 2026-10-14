@@ -3,6 +3,15 @@ import { drones, demoMission, pilotRules } from '@aeris/data';
 import { buildGrid, computeMetrics } from '@aeris/geo';
 import { greedySolve } from './greedy';
 import { ilpSolve } from './ilp';
+import {
+  PRIORITY_OVERLAP,
+  PRIORITY_OVERLAP_MAX,
+  PRIORITY_OVERLAP_MIN,
+  buildProblem,
+  clampPriorityOverlap,
+  isProblem,
+  marginal,
+} from './problem';
 
 const mission = { ...demoMission, id: 'test' };
 
@@ -78,5 +87,34 @@ describe('recuit simulé et ILP', () => {
     const eco = greedySolve(ctxFor('economie_moyens'));
     const all = greedySolve(ctxFor('couverture_globale'));
     expect(eco.assignments.length).toBeLessThanOrEqual(all.assignments.length);
+  });
+});
+
+describe('chevauchement sur les zones prioritaires', () => {
+  it('borne le réglage', () => {
+    expect(clampPriorityOverlap(-2)).toBe(PRIORITY_OVERLAP_MIN);
+    expect(clampPriorityOverlap(5)).toBe(PRIORITY_OVERLAP_MAX);
+    expect(clampPriorityOverlap(Number.NaN)).toBe(PRIORITY_OVERLAP_MIN);
+    expect(clampPriorityOverlap(PRIORITY_OVERLAP)).toBe(PRIORITY_OVERLAP);
+  });
+
+  it('bonifie la seconde couverture d’une cellule prioritaire, pénalise les autres', () => {
+    const ctx = {
+      mission,
+      catalog: drones,
+      rules: pilotRules,
+      grid: buildGrid(mission, 0),
+      phase: 0,
+      strategy: 'priorite' as const,
+    };
+    const p = buildProblem(ctx);
+    if (!isProblem(p)) throw new Error('problème attendu');
+    const prio = ctx.grid.cells.find((c) => c.priorityLevel > 0 && !c.forbidden)!;
+    const plain = ctx.grid.cells.find((c) => c.priorityLevel === 0 && !c.forbidden)!;
+    const alpha = p.overlapPenalty;
+    const beta = PRIORITY_OVERLAP;
+    expect(marginal(p, prio.id, 1)).toBeCloseTo((beta - alpha * (1 - beta)) * p.weights[prio.id]!);
+    expect(marginal(p, plain.id, 1)).toBeLessThan(0);
+    expect(marginal(p, prio.id, 2)).toBeLessThan(0);
   });
 });
