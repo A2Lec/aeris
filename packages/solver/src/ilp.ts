@@ -25,7 +25,7 @@ import highsLoader, { type Highs } from 'highs';
 import { meetsRequirement, type SolveContext, type SolveResult } from '@aeris/shared';
 import { distanceM } from '@aeris/geo';
 import { anneal, seedOf } from './greedy';
-import { buildProblem, isProblem, score, toResult, type Problem } from './problem';
+import { buildProblem, candidateCost, isProblem, score, toResult, type Problem } from './problem';
 
 /** Temps total visé pour l'ILP (le contrat exige < 5 s, construction et recuit compris). */
 const ILP_TIME_LIMIT_S = 3;
@@ -102,8 +102,9 @@ function buildLp(p: Problem): Built | undefined {
       const name = `x${k}_${j}`;
       xVars.set(name, [k, j]);
       vars.push(name);
-      const cost = u.moveCost[j]! + (u.fixed ? 0 : p.droneCost);
-      if (cost > 1e-6) objective.push(`- ${num(cost)} ${name}`);
+      const cost = candidateCost(p, k, j);
+      if (Math.abs(cost) > 1e-6)
+        objective.push(`${cost > 0 ? '-' : '+'} ${num(Math.abs(cost))} ${name}`);
       groupList.forEach((g, gi) => {
         if (meetsRequirement(u.model, g.requires) && distanceM(pos, g.center) <= u.radius)
           neighbors[gi]!.push(name);

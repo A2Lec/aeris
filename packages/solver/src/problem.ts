@@ -48,6 +48,16 @@ export function clampPriorityOverlap(v: number): number {
   return Math.min(PRIORITY_OVERLAP_MAX, Math.max(PRIORITY_OVERLAP_MIN, v));
 }
 
+/**
+ * Bonus pour chaque couple engagé « dans » la zone prioritaire, en % du poids total de la grille.
+ * Favorise l'emploi d'un plus grand nombre de drones sur les zones prioritaires (redondance,
+ * relève, angles de vue). 0 = désactivé ; plafonné à PRIORITY_DRONE_BONUS_MAX.
+ */
+export const PRIORITY_DRONE_BONUS_MAX = 10;
+export const PRIORITY_DRONE_BONUS = 2;
+/** Un couple est « dans » la zone prioritaire si au moins cette part de ce qu'il couvre y est. */
+export const PRIORITY_DRONE_MIN_SHARE = 0.2;
+
 /** Stratégie « économie de moyens » : un couple doit apporter au moins ça pour être engagé. */
 export const MIN_MARGINAL_GAIN = 0.03;
 
@@ -65,6 +75,8 @@ export interface Usable {
   covers: Int32Array[];
   /** Pour chaque candidat : pénalité de déplacement depuis la solution précédente. */
   moveCost: Float64Array;
+  /** Pour chaque candidat : bonus s'il place le couple dans la zone prioritaire (0 sinon). */
+  priorityBonus: Float64Array;
 }
 
 export interface Problem {
@@ -159,6 +171,14 @@ export function buildProblem(ctx: SolveContext): Problem | SolveResult {
         ? STABILITY_PENALTY * discWeight * Math.min(distanceM(prev, p) / radius, 1)
         : 0,
     );
+    const bonus =
+      (Math.min(Math.max(PRIORITY_DRONE_BONUS, 0), PRIORITY_DRONE_BONUS_MAX) / 100) * totalWeight;
+    const priorityBonus = Float64Array.from(covers, (cov) => {
+      if (bonus === 0 || cov.length === 0) return 0;
+      let prio = 0;
+      for (const i of cov) if (grid.cells[i]!.priorityLevel > 0) prio++;
+      return prio / cov.length >= PRIORITY_DRONE_MIN_SHARE ? bonus : 0;
+    });
     usable.push({
       res,
       level: pilot.level,
@@ -169,6 +189,7 @@ export function buildProblem(ctx: SolveContext): Problem | SolveResult {
       candidateCells,
       covers,
       moveCost,
+      priorityBonus,
     });
   }
 
@@ -221,6 +242,12 @@ export function marginal(p: Problem, i: number, n: number): number {
   return -p.overlapPenalty * p.weights[i]!;
 }
 
+/** Coût (négatif = gain) de placer le couple k au candidat j, hors couverture. */
+export function candidateCost(p: Problem, k: number, j: number): number {
+  const u = p.usable[k]!;
+  return u.moveCost[j]! + (u.fixed ? 0 : p.droneCost) - u.priorityBonus[j]!;
+}
+
 export function isProblem(p: Problem | SolveResult): p is Problem {
   return 'usable' in p;
 }
@@ -235,7 +262,7 @@ export function score(problem: Problem, choice: Int32Array): number {
   problem.usable.forEach((u, k) => {
     const j = choice[k]!;
     if (j < 0) return;
-    s -= u.moveCost[j]! + (u.fixed ? 0 : problem.droneCost);
+    s -= candidateCost(problem, k, j);
     for (const i of u.covers[j]!) count[i]!++;
   });
   for (let i = 0; i < count.length; i++) {
