@@ -53,6 +53,7 @@ const httpApi = {
   recompute: (id: string) => http<Proposal>('POST', API.recompute(id), {}),
   acceptRecompute: (id: string, proposalId: string) =>
     http<LiveState>('POST', API.acceptRecompute(id), { proposalId }),
+  rejectRecompute: (id: string) => http<LiveState>('POST', API.rejectRecompute(id), {}),
   /** Météo réelle (Open-Meteo via l'API, avec cache et repli hors ligne). */
   weather: (lat: number, lng: number) => http<Weather>('GET', API.weather(lat, lng)),
 };

@@ -251,6 +251,12 @@ describe('Scénario de démo complet', () => {
     expect(applied.assignments.some((a) => a.resourceId === victim)).toBe(false);
   }, 60_000);
 
+  it('le commandement peut rejeter un recalcul', async () => {
+    await call(Proposal, 'POST', API.recompute(id), {});
+    const before = await call(LiveState, 'POST', API.rejectRecompute(id), {});
+    expect(before.pendingRecompute).toBeUndefined();
+  }, 60_000);
+
   it('nouvelle zone prioritaire puis changement de phase', async () => {
     const zone = { ...input.priorityZones[0], id: 'z-live', phases: undefined };
     await call(LiveState, 'POST', API.events(id), { type: 'priority_zone_added', zone });
@@ -267,4 +273,32 @@ describe('Scénario de démo complet', () => {
     });
     expect(res.statusCode).toBe(400);
   });
+});
+
+describe('Changement de phase par mauvais temps', () => {
+  it('les drones interdits par la météo restent au sol', async () => {
+    const input = await call(MissionInput, 'GET', API.demoMission);
+    const id = (await call(MissionState, 'POST', API.missions, input, 201)).mission.id;
+    const [p] = await call(z.array(Proposal), 'POST', API.solve(id), {
+      strategies: ['priorite'],
+      useWeather: false,
+    });
+    await call(MissionState, 'POST', API.start(id, p.id));
+    await call(LiveState, 'POST', API.events(id), {
+      type: 'weather_update',
+      weather: {
+        windMs: 11,
+        gustMs: 14,
+        precipitationMm: 0.4,
+        temperatureC: 12,
+        isDay: true,
+        fetchedAt: new Date().toISOString(),
+        source: 'manuel',
+      },
+    });
+    const live = await call(LiveState, 'POST', API.events(id), { type: 'phase_changed', phase: 1 });
+    expect(live.phase).toBe(1);
+    // Rafales de 14 m/s : aucun drone du catalogue (12 m/s max) ne doit repartir.
+    expect(live.assignments).toHaveLength(0);
+  }, 60_000);
 });

@@ -1,4 +1,6 @@
 import type { LiveState, MissionEvent, MissionState } from '@aeris/shared';
+import { excludedByWeather } from '@aeris/weather';
+import { getDrones } from '../catalogStore';
 import { metricsFor } from './pipeline';
 
 /**
@@ -38,8 +40,14 @@ export function applyEvent(st: MissionState, live: LiveState, ev: MissionEvent):
       live.phase = Math.min(ev.phase, mission.phaseCount - 1);
       const proposal = st.proposals.find((p) => p.id === live.proposalId);
       const available = new Set(mission.resources.filter((r) => r.available).map((r) => r.id));
+      // Le plan prévu ne tient pas compte de la météo du moment : un drone qu'elle interdit
+      // reste au sol (une météo de repli n'est pas une mesure, on l'ignore).
+      const grounded =
+        live.weather && live.weather.source !== 'repli'
+          ? excludedByWeather(mission.resources, getDrones(), live.weather)
+          : {};
       live.assignments = (proposal?.assignments ?? []).filter(
-        (a) => a.phase === live.phase && available.has(a.resourceId),
+        (a) => a.phase === live.phase && available.has(a.resourceId) && !grounded[a.resourceId],
       );
       break;
     }
