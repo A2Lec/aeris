@@ -1,0 +1,65 @@
+/* Conduite : statut du suivi, événements terrain, journal. */
+
+.live-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 14px;
+  font-size: 13px;
+  color: var(--text-2);
+}
+.live-status span {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--danger);
+}
+.live-status.on span {
+  background: var(--ok);
+}
+
+.events {
+  margin-top: 16px;
+}
+.events h3 {
+  margin-top: 0;
+}
+.event-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.event-row .segmented button {
+  padding: 3px 10px;
+}
+.placing {
+  color: var(--warn-text);
+}
+
+.journal {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 13px;
+}
+.journal li {
+  display: grid;
+  grid-template-columns: 44px 1fr;
+  gap: 6px;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--border);
+}
+.journal li:last-child {
+  border-bottom: 0;
+}
+.journal time {
+  color: var(--text-2);
+}
+
+.stability-summary {
+  margin: 10px 0 0;
+  padding-left: 18px;
+  font-size: 13px;
+  color: var(--text-2);
+}

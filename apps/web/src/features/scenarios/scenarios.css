@@ -1,207 +1,176 @@
-/* Étape « Propositions » : proposition retenue à gauche, comparaison à droite. */
+/* Étape « Propositions » : choix de stratégie, comparaison, retouche. */
 
-.proposal-panel {
-  left: var(--gap);
-  width: min(400px, calc(50% - 1.5 * var(--gap)));
+.strategies {
+  margin-bottom: 14px;
+}
+/* La couleur de la stratégie souligne l'onglet actif (globale bleu, priorité violet). */
+.strategies button.active.strategy-couverture_globale {
+  color: var(--info-text);
+}
+.strategies button.active.strategy-priorite {
+  color: var(--priority-text);
+}
+
+.notice.draft {
   display: flex;
   flex-direction: column;
-  /* Place réservée au bouton réduire / rouvrir, posé sur le haut du panneau. */
-  padding-top: 56px;
-  padding-bottom: 0;
-  animation: panel-in-left 180ms ease-out;
+  align-items: flex-start;
+  gap: 6px;
+  margin-bottom: 12px;
 }
-.compare-panel {
-  right: var(--gap);
-  width: min(440px, calc(50% - 1.5 * var(--gap)));
-  animation: panel-in-right 180ms ease-out;
+
+.compare-details {
+  margin: 12px 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  overflow-x: auto;
 }
-@keyframes panel-in-left {
+.compare-details summary {
+  padding: 8px 12px;
+  cursor: pointer;
+  font-weight: 500;
+}
+.compare-details[open] summary {
+  border-bottom: 1px solid var(--border);
+}
+
+.compare {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.compare th,
+.compare td {
+  padding: 6px 8px;
+  text-align: right;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--border);
+}
+.compare thead th {
+  font-weight: 500;
+  color: var(--text-2);
+}
+.compare thead th.selected {
+  color: var(--primary);
+  box-shadow: inset 0 -2px 0 var(--primary);
+}
+.compare tbody th {
+  text-align: left;
+  font-weight: 400;
+  color: var(--text-2);
+}
+.compare .sense {
+  margin-left: 3px;
+  font-size: 10px;
+}
+.compare td.selected {
+  background: var(--surface-2);
+}
+.compare td.best {
+  color: var(--ok-text);
+  font-weight: 600;
+}
+.compare td.warn {
+  color: var(--warn-text);
+}
+.compare tbody tr:last-child > * {
+  border-bottom: 0;
+}
+
+.reserve li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.reserve .pill {
+  margin-left: auto;
+}
+
+/* ─── Fenêtres posées sur la carte ─────────────────────────────────────── */
+
+.float-panel {
+  position: absolute;
+  z-index: 900;
+  top: 12px;
+  max-height: calc(100% - 24px);
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 28px rgb(15 23 42 / 0.18);
+}
+.float-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 14px 16px 16px;
+}
+.float-foot {
+  display: flex;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+}
+.float-foot button {
+  flex: 1;
+  white-space: nowrap;
+  padding-inline: 8px;
+}
+.proposal-window {
+  left: 12px;
+  width: min(390px, calc(50% - 18px));
+  /* Place réservée au bouton réduire / rouvrir, posé sur le haut de la fenêtre. */
+  padding-top: 48px;
+  animation: window-in-left 160ms ease-out;
+}
+.compare-window {
+  right: 12px;
+  width: min(430px, calc(50% - 18px));
+  animation: window-in-right 160ms ease-out;
+}
+.compare-window h2 {
+  margin-bottom: 10px;
+}
+@keyframes window-in-left {
   from {
     opacity: 0;
     transform: translateX(-8px);
   }
 }
-@keyframes panel-in-right {
+@keyframes window-in-right {
   from {
     opacity: 0;
     transform: translateX(8px);
   }
 }
 
-.panel-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 12px;
-}
-.panel-head h2 {
-  margin: 0;
+/* La carte s'assombrit derrière les fenêtres ouvertes, et redevient claire une fois réduites. */
+.map-area.dimmed .map .leaflet-tile-pane {
+  filter: var(--map-dim);
+  transition: filter 200ms ease;
 }
 
-/* ─── Tableau de comparaison (lecture seule) ─────────────────────────────── */
-
-.compare {
-  width: 100%;
-  border-collapse: collapse;
-  font-variant-numeric: tabular-nums;
-}
-.compare th,
-.compare td {
-  padding: 7px 6px;
-  text-align: right;
-  white-space: nowrap;
-  border-bottom: 1px solid var(--rule);
-}
-.compare thead th {
-  font-weight: 500;
-  color: var(--dim);
-  vertical-align: bottom;
-}
-.compare thead th.selected {
-  color: var(--text);
-  box-shadow: inset 0 -2px 0 var(--steel);
-}
-.compare tbody th {
-  text-align: left;
-  font-weight: 400;
-  color: var(--dim);
-}
-.compare .sense {
-  margin-left: 4px;
-  font-size: 11px;
-  opacity: 0.7;
-}
-.compare td.selected {
-  background: rgb(169 199 232 / 0.07);
-}
-.compare td.best {
-  color: var(--best);
-  font-weight: 600;
-}
-.compare td.warn {
-  color: var(--warn);
-}
-.compare tbody tr:last-child > * {
-  border-bottom: 0;
-}
-.legend {
-  margin: 10px 0 0;
-  font-size: 12px;
-  color: var(--dim);
-}
-.empty {
-  color: var(--dim);
-}
-
-/* ─── Proposition retenue ────────────────────────────────────────────────── */
-
-/* Une proposition = un bouton : un seul clic pour changer. */
-.switcher {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 2px;
-  padding: 2px;
-  margin-bottom: 12px;
-  border: 1px solid var(--rule);
-  border-radius: 8px;
-}
-.switcher button {
-  flex: 1 1 auto;
-  border: 0;
-  border-radius: 6px;
-  background: none;
-  color: var(--dim);
-  padding: 6px 10px;
-}
-.switcher button:hover:not(:disabled) {
-  color: var(--text);
-}
-.switcher button.active {
-  background: var(--text);
-  color: #0f1720;
-  font-weight: 600;
-}
-
-.proposal-status {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin: 0 0 4px;
-}
-
-.draft-bar {
-  margin: 0 0 12px;
-  padding: 10px 12px;
-  border: 1px solid rgb(232 177 90 / 0.45);
-  border-radius: 8px;
-  background: rgb(232 177 90 / 0.08);
-}
-.draft-bar p {
-  margin: 0;
-  color: var(--warn);
-}
-.draft-bar .actions {
-  margin-top: 8px;
-}
-
-.couples li {
-  display: flex;
-  gap: 10px;
-  align-items: flex-start;
-}
-.couples small {
-  display: block;
-}
-.swatch {
-  flex: none;
-  width: 10px;
-  height: 10px;
-  margin-top: 5px;
-  border-radius: 50%;
-}
-.moved {
-  margin-left: 8px;
-  font-size: 12px;
-  font-style: normal;
-  color: var(--warn);
-}
-
-.proposal-actions {
-  position: sticky;
-  bottom: 0;
-  display: flex;
-  gap: 8px;
-  margin: 16px -18px 0;
-  padding: 12px 18px 14px;
-  background: linear-gradient(transparent, #0f1720 30%);
-  border-top: 1px solid var(--rule);
-}
-.proposal-actions button {
-  white-space: nowrap;
-}
-.proposal-actions .primary {
-  margin-left: auto;
-}
-
-/* ─── Bouton réduire / rouvrir : même place ouvert ou réduit ───────────────── */
+/* ─── Bouton réduire / rouvrir : même place ouvert ou réduit ───────────── */
 
 .window-toggle {
   position: absolute;
-  z-index: 1001;
-  top: calc(var(--bar-h) + var(--gap));
-  left: var(--gap);
+  z-index: 901;
+  top: 12px;
+  left: 12px;
   height: 48px;
-  max-width: min(400px, calc(50% - 1.5 * var(--gap)));
+  max-width: min(390px, calc(50% - 18px));
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 0 16px 0 14px;
   border: 1px solid transparent;
-  border-radius: 10px;
+  border-radius: 10px 10px 0 0;
   background: none;
-  font-size: 17px;
+  font-size: 16px;
   font-weight: 600;
+  color: var(--text);
   text-align: left;
 }
 .window-toggle span {
@@ -211,48 +180,68 @@
 }
 .window-toggle svg {
   flex: none;
-  color: var(--dim);
+  color: var(--text-2);
 }
 .window-toggle:hover:not(:disabled) {
-  border-color: var(--rule);
+  border-color: transparent;
+  color: var(--primary);
+}
+.window-toggle.floating {
+  max-width: 60%;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  box-shadow: 0 6px 20px rgb(15 23 42 / 0.18);
 }
 .window-toggle em {
   font-style: normal;
   font-size: 13px;
   font-weight: 500;
-  color: var(--warn);
+  color: var(--warn-text);
   white-space: nowrap;
 }
 
-.restore {
-  position: absolute;
-  z-index: 1000;
-  top: calc(var(--bar-h) + var(--gap));
-  left: var(--gap);
+.window-status {
   display: flex;
   align-items: center;
-  gap: 8px;
-}
-.window-toggle.floating {
-  position: static;
-  max-width: 60vw;
-  background: var(--night);
-  border-color: var(--rule);
-  backdrop-filter: blur(10px);
-  box-shadow: 0 6px 24px rgb(0 0 0 / 0.35);
-}
-.restore .phase-tabs button:not(.active) {
-  background: var(--night);
+  gap: 10px;
+  margin: 12px 0;
 }
 
-@media (max-width: 760px) {
-  .compare-panel {
+.couples-list {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+}
+.couples-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--border);
+}
+.couples-list li:last-child {
+  border-bottom: 0;
+}
+.couples-list .pill {
+  margin-left: 6px;
+}
+.couples-list small {
+  display: block;
+}
+.couples-list li.focused b {
+  color: var(--warn-text);
+}
+
+@media (max-width: 860px) {
+  .compare-window {
     display: none;
   }
-  .proposal-panel,
+  .proposal-window,
   .window-toggle {
-    right: var(--gap);
     width: auto;
+    right: 12px;
     max-width: none;
   }
 }

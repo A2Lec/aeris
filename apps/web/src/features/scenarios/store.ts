@@ -3,8 +3,9 @@ import { moveKey } from './draft';
 
 interface ScenarioStore {
   selectedId?: string;
+  /** Phase affichée hors conduite (configuration, phasage, propositions). */
   phase: number;
-  /** Fenêtre de choix réduite : la carte passe au premier plan pour retoucher les positions. */
+  /** Fenêtres réduites : la carte passe au premier plan pour retoucher les positions. */
   minimized: boolean;
   /** Positions déplacées sur la carte, en attente de recalcul (clé : moveKey). */
   draft?: { proposalId: string; moves: Record<string, [number, number]> };
