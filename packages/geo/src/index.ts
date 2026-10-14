@@ -8,3 +8,4 @@ export * from './redondance';
 export * from './presence';
 export * from './parCouple';
 export * from './zones';
+export * from './communes';
