@@ -11,7 +11,7 @@ import {
 } from '@aeris/geo';
 import { solve } from '@aeris/solver';
 import { deconflict } from '@aeris/deconflict';
-import { excludedByWeather, fetchWeather } from '@aeris/weather';
+import { excludedByWeather, fetchWeather, weatherForPhase } from '@aeris/weather';
 import {
   meetsRequirement,
   type Assignment,
@@ -111,9 +111,6 @@ export async function buildProposal(
 ): Promise<Proposal> {
   const phases = opts.phases ?? [...Array(mission.phaseCount).keys()];
   const catalog = getDrones();
-  // Une météo de repli n'est pas une mesure : on ne s'en sert pas pour écarter des drones.
-  const realWeather = opts.weather?.source === 'repli' ? undefined : opts.weather;
-  const excluded = realWeather ? excludedByWeather(mission.resources, catalog, realWeather) : {};
   const assignments: Assignment[] = [];
   const metricsByPhase: Metrics[] = [];
   const diagnostics: string[] = [];
@@ -127,6 +124,7 @@ export async function buildProposal(
 
   for (const phase of phases) {
     const grid = buildGrid(mission, phase);
+    const excluded = excludedForPhase(mission, phase, opts.weather, catalog);
     const res = await solve({
       mission,
       catalog,
@@ -163,6 +161,24 @@ export async function buildProposal(
     diagnostics,
     createdAt: new Date().toISOString(),
   };
+}
+
+/**
+ * Couples que la météo interdit pendant une phase : { resourceId: raison }.
+ * Le jour ou la nuit vient de l'horaire de la phase, pas de l'heure du calcul (une mission
+ * planifiée de 8 h à 12 h reste de jour, même calculée le soir). Sans période déclarée, on
+ * garde l'état mesuré. Une météo de repli n'est pas une mesure : elle n'écarte aucun drone.
+ */
+export function excludedForPhase(
+  mission: Mission,
+  phase: number,
+  weather: Weather | undefined,
+  catalog = getDrones(),
+): Record<string, string> {
+  if (!weather || weather.source === 'repli') return {};
+  const [lng, lat] = workAreaCenter(mission);
+  const w = mission.period ? weatherForPhase(weather, mission, phase, lat, lng) : weather;
+  return excludedByWeather(mission.resources, catalog, w);
 }
 
 /** Centre approximatif de la zone de travail (pour la météo). */
