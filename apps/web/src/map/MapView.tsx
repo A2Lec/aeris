@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react';
 import { LayersControl, MapContainer, TileLayer } from 'react-leaflet';
+import '@geoman-io/leaflet-geoman-free';
+import '@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css';
 
 const ign = (layer: string, format: string) =>
   'https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0' +
