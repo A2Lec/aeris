@@ -102,6 +102,11 @@ export const Mission = z.object({
   maxDrones: z.number().int().min(0),
   period: z.object({ start: z.string(), end: z.string() }).optional(),
   phaseCount: z.number().int().min(1).default(1),
+  /**
+   * Durée de chaque phase en minutes, à partir du début de la période (choisie par
+   * l'opérateur). Absente ou incohérente avec `phaseCount` : période découpée en parts égales.
+   */
+  phaseDurationsMin: z.array(z.number().positive()).optional(),
   /** Taille des cellules de la grille de calcul, en mètres. */
   gridCellM: z.number().min(25).default(100),
   pilots: z.array(Pilot),

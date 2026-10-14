@@ -6,6 +6,17 @@ import { WizardWindow } from '../../components/WizardWindow';
 import { CONSTRAINT_COLORS, PRIORITY_COLORS } from '../../map/colors';
 import { searchPlaces, type Place } from './place';
 import { togglePhase, withPhaseCount, zonePhases } from './phases';
+import { centreZone } from '../live/meteo';
+import {
+  formatDuration,
+  formatSlotTime,
+  fromLocalInput,
+  phaseDurations,
+  phaseSlots,
+  resizeDurations,
+  toLocalInput,
+  withSchedule,
+} from './period';
 import { maxRedundancy, redundancyWarning } from './redundancy';
 import { WIZARD_STEPS, useConfigEditorStore, type ConfigDrawMode, type WizardStep } from './store';
 import './config.css';
@@ -161,7 +172,7 @@ export function ConfigPanel() {
     },
     5: {
       intro:
-        'Découpez l’intervention en phases, puis indiquez dans quelles phases chaque zone prioritaire doit être couverte.',
+        'Découpez l’intervention en phases, réglez l’heure de début et la durée de chacune, puis indiquez dans quelles phases chaque zone prioritaire doit être couverte.',
       body: <PhaseFields />,
       next: (
         <button className="primary" disabled={busy} onClick={() => void solve()}>
@@ -660,7 +671,112 @@ function ZoneList({
   );
 }
 
-/** Nombre de phases, puis présence de chaque zone prioritaire par phase. */
+/**
+ * Horaires de l'intervention : l'opérateur fixe le début, puis la durée de chaque phase.
+ * Les phases s'enchaînent ; chaque créneau dit si la phase se déroule de jour ou de nuit,
+ * ce que la météo de conduite applique phase par phase.
+ */
+function PeriodFields() {
+  const { state, busy } = useMissionStore();
+  const update = useMissionUpdate();
+  const [startDraft, setStartDraft] = useState<string>();
+  if (!state) return null;
+  const { mission } = state;
+  const start = startDraft ?? (mission.period ? toLocalInput(mission.period.start) : '');
+  const durations = phaseDurations(mission);
+  const [lng, lat] = centreZone(mission);
+  const slots = phaseSlots(mission, lat, lng);
+
+  const saveStart = (value: string) => {
+    setStartDraft(value);
+    const iso = fromLocalInput(value);
+    if (iso) void update(withSchedule(iso, durations));
+  };
+  const saveDuration = (phase: number, minutes: number) => {
+    if (!mission.period || !Number.isFinite(minutes) || minutes <= 0) return;
+    const next = durations.map((d, i) => (i === phase ? minutes : d));
+    void update(withSchedule(mission.period.start, next));
+  };
+
+  return (
+    <div className="wizard-field period">
+      <label className="period-start">
+        Début de l’intervention
+        <input
+          type="datetime-local"
+          value={start}
+          disabled={busy}
+          onChange={(e) => saveStart(e.target.value)}
+        />
+      </label>
+      {!mission.period ? (
+        <small className="hint">
+          Indiquez le début pour régler la durée de chaque phase. Sans horaires, toutes les phases
+          sont considérées de jour pour la météo.
+        </small>
+      ) : (
+        <>
+          <ol className="phase-slots">
+            {slots.map((slot) => {
+              const minutes = durations[slot.phase] ?? 0;
+              const hours = Math.floor(minutes / 60);
+              const rest = Math.round(minutes % 60);
+              return (
+                <li key={slot.phase}>
+                  <b>Phase {slot.phase + 1}</b>
+                  <span
+                    className="phase-duration"
+                    role="group"
+                    aria-label={`Durée de la phase ${slot.phase + 1}`}
+                  >
+                    <input
+                      type="number"
+                      min={0}
+                      max={72}
+                      value={hours}
+                      disabled={busy}
+                      aria-label="Heures"
+                      onChange={(e) => saveDuration(slot.phase, e.target.valueAsNumber * 60 + rest)}
+                    />
+                    <small>h</small>
+                    <input
+                      type="number"
+                      min={0}
+                      max={59}
+                      step={15}
+                      value={rest}
+                      disabled={busy}
+                      aria-label="Minutes"
+                      onChange={(e) =>
+                        saveDuration(slot.phase, hours * 60 + e.target.valueAsNumber)
+                      }
+                    />
+                    <small>min</small>
+                  </span>
+                  <span
+                    className={`pill ${slot.day ? 'day' : 'night'}`}
+                    title="Jour ou nuit aéronautique au milieu de la phase"
+                  >
+                    {slot.day ? 'Jour' : 'Nuit'}
+                  </span>
+                  <small className="phase-time">
+                    {formatSlotTime(slot.start)} – {formatSlotTime(slot.end, slot.start)}
+                  </small>
+                </li>
+              );
+            })}
+          </ol>
+          <small className="hint">
+            Fin de l’intervention : {formatSlotTime(mission.period.end)}, après{' '}
+            {formatDuration(durations.reduce((s, d) => s + d, 0))}.
+          </small>
+        </>
+      )}
+    </div>
+  );
+}
+
+/** Période, nombre de phases, puis présence de chaque zone prioritaire par phase. */
 function PhaseFields() {
   const { state, busy } = useMissionStore();
   const update = useMissionUpdate();
@@ -683,6 +799,13 @@ function PhaseFields() {
                 update({
                   phaseCount: i + 1,
                   priorityZones: withPhaseCount(mission.priorityZones, i + 1),
+                  // Les horaires suivent : on garde les durées déjà choisies, on complète.
+                  ...(mission.period
+                    ? withSchedule(
+                        mission.period.start,
+                        resizeDurations(phaseDurations(mission), i + 1),
+                      )
+                    : {}),
                 })
               }
             >
@@ -691,6 +814,8 @@ function PhaseFields() {
           ))}
         </div>
       </div>
+
+      <PeriodFields />
 
       {mission.priorityZones.length === 0 ? (
         <p className="hint">Aucune zone prioritaire à répartir entre les phases.</p>

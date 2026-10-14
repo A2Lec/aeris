@@ -14,6 +14,8 @@ import {
 } from '../config/ConfigPanel';
 import { useConfigEditorStore } from '../config/store';
 import { pilotModels, withDrone, withLevel, withPilot, withoutPilots } from './means';
+import { formatSlotTime, phaseSlots } from '../config/period';
+import { centreZone } from './meteo';
 import { resumeInConduite } from './resume';
 import { useLiveStore } from './store';
 import { MANUAL_WEATHER, editWeather, importWeather, weatherLimits } from './weather';
@@ -529,18 +531,21 @@ function WeatherFields() {
   const edit = (patch: Partial<Weather>) => weather && setWeather(editWeather(weather, patch));
   const summary = weather && summarizeWeather(weather);
 
-  const grounded = weather
-    ? mission.resources
-        .filter((r) => available[r.id] ?? r.available)
-        .flatMap((r) => {
-          const drone = catalog?.drones.find((d) => d.id === r.droneModelId);
-          const limits = drone ? weatherLimits(drone, weather) : [];
-          const pilot = mission.pilots.find((p) => p.id === r.pilotId);
-          return limits.length
-            ? [{ id: r.id, label: `${drone?.name}, ${pilot?.name ?? r.id}`, limits }]
-            : [];
-        })
-    : [];
+  const groundedWith = (w: Weather) =>
+    mission.resources
+      .filter((r) => available[r.id] ?? r.available)
+      .flatMap((r) => {
+        const drone = catalog?.drones.find((d) => d.id === r.droneModelId);
+        const limits = drone ? weatherLimits(drone, w) : [];
+        const pilot = mission.pilots.find((p) => p.id === r.pilotId);
+        return limits.length
+          ? [{ id: r.id, label: `${drone?.name}, ${pilot?.name ?? r.id}`, limits }]
+          : [];
+      });
+  const grounded = weather ? groundedWith(weather) : [];
+  // Avec une période, le jour ou la nuit suit le créneau de chaque phase (règle de l'API).
+  const [lng, lat] = centreZone(mission);
+  const slots = phaseSlots(mission, lat, lng);
 
   const number = (
     label: string,
@@ -603,32 +608,58 @@ function WeatherFields() {
             )}
             {number('Température', weather.temperatureC, (v) => edit({ temperatureC: v }), '°C')}
           </div>
-          <div className="segmented" role="group" aria-label="Luminosité">
-            {[true, false].map((day) => (
-              <button
-                key={String(day)}
-                className={weather.isDay === day ? 'active' : ''}
-                aria-pressed={weather.isDay === day}
-                onClick={() => edit({ isDay: day })}
-              >
-                {day ? 'Jour' : 'Nuit'}
-              </button>
-            ))}
-          </div>
-          {grounded.length > 0 ? (
-            <div className="notice warn">
-              <b>Hors limites avec cette météo</b>
-              <ul className="grounded">
-                {grounded.map((g) => (
-                  <li key={g.id}>
-                    {g.label} : {g.limits.join(', ')}
+          {slots.length > 0 ? (
+            <ol className="phase-slots weather-phases" aria-label="Météo par phase">
+              {slots.map((slot) => {
+                const out = groundedWith({ ...weather, isDay: slot.day });
+                return (
+                  <li key={slot.phase}>
+                    <b>Phase {slot.phase + 1}</b>
+                    <span>
+                      {formatSlotTime(slot.start)} – {formatSlotTime(slot.end, slot.start)}
+                    </span>
+                    <span className={`pill ${slot.day ? 'day' : 'night'}`}>
+                      {slot.day ? 'Jour' : 'Nuit'}
+                    </span>
+                    <small className={out.length ? 'grounded-line' : 'hint'}>
+                      {out.length
+                        ? `Au sol : ${out.map((g) => `${g.label} (${g.limits.join(', ')})`).join(' ; ')}`
+                        : 'Tous les drones disponibles peuvent voler.'}
+                    </small>
                   </li>
-                ))}
-              </ul>
-              <small>Ces drones seront écartés par l’optimisation.</small>
-            </div>
+                );
+              })}
+            </ol>
           ) : (
-            <p className="hint">Tous les drones disponibles peuvent voler avec cette météo.</p>
+            <>
+              <div className="segmented" role="group" aria-label="Luminosité">
+                {[true, false].map((day) => (
+                  <button
+                    key={String(day)}
+                    className={weather.isDay === day ? 'active' : ''}
+                    aria-pressed={weather.isDay === day}
+                    onClick={() => edit({ isDay: day })}
+                  >
+                    {day ? 'Jour' : 'Nuit'}
+                  </button>
+                ))}
+              </div>
+              {grounded.length > 0 ? (
+                <div className="notice warn">
+                  <b>Hors limites avec cette météo</b>
+                  <ul className="grounded">
+                    {grounded.map((g) => (
+                      <li key={g.id}>
+                        {g.label} : {g.limits.join(', ')}
+                      </li>
+                    ))}
+                  </ul>
+                  <small>Ces drones seront écartés par l’optimisation.</small>
+                </div>
+              ) : (
+                <p className="hint">Tous les drones disponibles peuvent voler avec cette météo.</p>
+              )}
+            </>
           )}
         </>
       )}
