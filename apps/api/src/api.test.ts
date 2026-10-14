@@ -302,3 +302,22 @@ describe('Changement de phase par mauvais temps', () => {
     expect(live.assignments).toHaveLength(0);
   }, 60_000);
 });
+
+describe('Planification sans moyens', () => {
+  it('le solveur dimensionne la flotte puis propose les dispositifs', async () => {
+    const demo = await call(MissionInput, 'GET', API.demoMission);
+    const input = { ...demo, pilots: [], resources: [], maxDrones: 6 };
+    const id = (await call(MissionState, 'POST', API.missions, input, 201)).mission.id;
+    const proposals = await call(z.array(Proposal), 'POST', API.solve(id), { useWeather: false });
+    const st = await call(MissionState, 'GET', API.mission(id));
+    // Un télépilote par drone, au plus le plafond de l'arrêté.
+    expect(st.mission.resources.length).toBeGreaterThan(0);
+    expect(st.mission.resources.length).toBeLessThanOrEqual(6);
+    expect(st.mission.pilots).toHaveLength(st.mission.resources.length);
+    for (const p of proposals) {
+      expect(p.status).not.toBe('infaisable');
+      expect(p.assignments.length).toBeGreaterThan(0);
+      expect(p.diagnostics[0]).toMatch(/^Dimensionnement : \d+ drone/);
+    }
+  }, 120_000);
+});
