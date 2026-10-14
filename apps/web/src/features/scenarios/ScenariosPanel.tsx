@@ -1,24 +1,30 @@
 import { useEffect } from 'react';
 import { api } from '../../api/client';
 import { useMissionStore } from '../../app/missionStore';
-import { MetricsCard } from '../../components/MetricsCard';
-import { resourceColor } from '../../map/colors';
+import { resourceLabel } from '../resourceLabel';
+import { KpiGrid } from '../../components/KpiGrid';
+import { SeparationCard } from '../../components/SeparationCard';
+import { useFocusStore } from '../../components/focus';
+import { formatSlot } from '../../components/format';
+import { phaseDiagnostics } from '../../components/separation';
 import { CompareTable } from './CompareTable';
 import { STATUS_LABELS, columnLabels } from './compare';
 import { applyMoves, moveKey } from './draft';
+import { useSelection } from './selection';
 import { useScenarioStore } from './store';
 import './scenarios.css';
 
 /**
- * Étape « Propositions » : proposition retenue à gauche, comparaison en lecture seule à droite.
- * La fenêtre se réduit pour retoucher les positions sur la carte ; au retour, l'opérateur
- * recalcule la couverture de la proposition ou annule ses déplacements.
- * TODO(P6) : export du dispositif retenu.
+ * Étape « Propositions », posée sur la carte : fenêtre Proposition à gauche (choix en un
+ * clic, indicateurs, couples, séparation, décision) et fenêtre Comparaison à droite, en
+ * lecture seule. Un seul bouton, toujours au même endroit, réduit et rouvre les fenêtres :
+ * réduites, la carte repasse au premier plan pour déplacer les pilotes.
  */
 export function ScenariosPanel() {
-  const { state, catalog, setState, run, busy } = useMissionStore();
-  const { selectedId, select, phase, setPhase, minimized, setMinimized, draft, clearDraft } =
-    useScenarioStore();
+  const { setState, run, busy, catalog } = useMissionStore();
+  const { select, minimized, setMinimized, clearDraft } = useScenarioStore();
+  const { focusId, focus } = useFocusStore();
+  const { state, proposals, selected, phase, moves, pending, inPhase } = useSelection();
 
   useEffect(() => {
     if (minimized) return;
@@ -28,41 +34,20 @@ export function ScenariosPanel() {
   }, [minimized, setMinimized]);
 
   if (!state) return null;
-  const { mission, proposals } = state;
-  const selected = proposals.find((p) => p.id === selectedId) ?? proposals[0];
-  const moves = draft && draft.proposalId === selected?.id ? draft.moves : {};
-  const pending = Object.keys(moves).length;
-  const inPhase = selected?.assignments.filter((a) => a.phase === phase) ?? [];
-  const resourceIds = mission.resources.map((r) => r.id);
+  const { mission } = state;
   const labels = columnLabels(proposals);
-  const modelName = (id: string) => catalog?.drones.find((d) => d.id === id)?.name ?? id;
+  const metrics = selected?.metricsByPhase[phase];
 
-  const phaseTabs = mission.phaseCount > 1 && (
-    <div className="phase-tabs" role="group" aria-label="Phase affichée">
-      {[...Array(mission.phaseCount).keys()].map((p) => (
-        <button
-          key={p}
-          className={p === phase ? 'active' : ''}
-          aria-pressed={p === phase}
-          onClick={() => setPhase(p)}
-        >
-          Phase {p + 1}
-        </button>
-      ))}
-    </div>
-  );
-
-  const solveAgain = () =>
+  // Recalcul : applique les déplacements en attente, sinon relance le solveur
+  // en remplaçant les propositions existantes (elles ne s'empilent plus).
+  const recompute = () =>
     run(async () => {
-      clearDraft();
-      await api.solve(mission.id);
-      setState(await api.getMission(mission.id));
-    });
-
-  const applyDraft = () =>
-    selected &&
-    run(async () => {
-      await api.editProposal(mission.id, selected.id, applyMoves(selected.assignments, moves));
+      if (selected && pending > 0) {
+        await api.editProposal(mission.id, selected.id, applyMoves(selected.assignments, moves));
+      } else {
+        for (const p of proposals) await api.deleteProposal(mission.id, p.id);
+        await api.solve(mission.id);
+      }
       clearDraft();
       setState(await api.getMission(mission.id));
     });
@@ -88,157 +73,141 @@ export function ScenariosPanel() {
     </button>
   );
 
-  if (minimized) {
-    return (
-      <div className="restore">
-        {toggle}
-        {phaseTabs}
-      </div>
-    );
-  }
+  if (minimized) return toggle;
 
   return (
     <>
       {toggle}
-      <section className="panel compare-panel" aria-labelledby="compare-title">
-        <header className="panel-head">
-          <h2 id="compare-title">Comparaison</h2>
-          {phaseTabs}
-        </header>
-        {proposals.length === 0 ? (
-          <p className="empty">Aucune proposition à comparer.</p>
-        ) : (
-          <>
-            <CompareTable proposals={proposals} selectedId={selected?.id} phase={phase} />
-            <p className="legend">
-              En vert, la meilleure valeur de la phase. Survolez une colonne pour son nom complet.
-            </p>
-          </>
-        )}
+
+      <section className="float-panel proposal-window" aria-label="Proposition retenue">
+        <div className="float-scroll">
+          {proposals.length > 0 && (
+            <div className="segmented strategies" role="group" aria-label="Proposition affichée">
+              {proposals.map((p) => (
+                <button
+                  key={p.id}
+                  className={`${p.id === selected?.id ? 'active' : ''} strategy-${p.strategy}`}
+                  aria-pressed={p.id === selected?.id}
+                  disabled={pending > 0 && p.id !== selected?.id}
+                  title={pending > 0 ? 'Recalculez ou annulez les déplacements d’abord' : p.label}
+                  onClick={() => select(p.id)}
+                >
+                  {labels.get(p.id)}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {!selected ? (
+            <p className="empty">Aucune proposition. Lancez le calcul pour en obtenir.</p>
+          ) : (
+            <>
+              <p className="window-status">
+                <span
+                  className={`pill ${selected.status === 'infaisable' ? 'danger' : selected.status === 'optimal' ? 'ok' : ''}`}
+                >
+                  {STATUS_LABELS[selected.status]}
+                </span>
+                {pending === 0 && (
+                  <small>Réduisez la fenêtre pour déplacer les pilotes sur le plan.</small>
+                )}
+              </p>
+
+              {pending > 0 && (
+                <div className="notice warn draft">
+                  {pending === 1 ? '1 couple déplacé' : `${pending} couples déplacés`} sur le plan :
+                  les indicateurs ne sont pas à jour.
+                  <button className="small" onClick={clearDraft} disabled={busy}>
+                    Annuler les déplacements
+                  </button>
+                </div>
+              )}
+
+              {metrics && <KpiGrid metrics={metrics} />}
+
+              <h3>
+                Couples engagés
+                {mission.phaseCount > 1 && <small> en phase {phase + 1}</small>}
+              </h3>
+              {inPhase.length === 0 ? (
+                <p className="hint">Aucun couple engagé sur cette phase.</p>
+              ) : (
+                <ul className="couples-list">
+                  {inPhase.map((a) => {
+                    const moved = moves[moveKey(a.resourceId, a.phase)] !== undefined;
+                    return (
+                      <li key={a.resourceId} className={focusId === a.resourceId ? 'focused' : ''}>
+                        <div>
+                          <b title={a.resourceId}>
+                            {resourceLabel(mission, a.resourceId, catalog)}
+                          </b>
+                          <span className="pill">{a.radiusM / 1000} km</span>
+                          {moved && <span className="pill warn">Déplacé</span>}
+                          <small>
+                            {a.altitude.minM} à {a.altitude.maxM} m,{' '}
+                            {formatSlot(a.slot).toLowerCase()}
+                          </small>
+                        </div>
+                        <button
+                          className="small"
+                          title="Réduire la fenêtre et centrer la carte sur ce couple"
+                          onClick={() => {
+                            focus(a.resourceId);
+                            setMinimized(true);
+                          }}
+                        >
+                          Déplacer
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+
+              <SeparationCard
+                assignments={inPhase}
+                diagnostics={phaseDiagnostics(selected.diagnostics, phase)}
+                infeasible={selected.status === 'infaisable'}
+              />
+            </>
+          )}
+        </div>
+
+        <footer className="float-foot">
+          <button className="recompute" disabled={busy} onClick={recompute}>
+            {pending > 0 ? 'Recalculer la couverture' : 'Recalculer'}
+          </button>
+          <button
+            className="validate"
+            disabled={busy || !selected || pending > 0 || selected.status === 'infaisable'}
+            title={pending > 0 ? 'Recalculez ou annulez les déplacements d’abord' : undefined}
+            onClick={() =>
+              selected && run(async () => setState(await api.start(mission.id, selected.id)))
+            }
+          >
+            Valider le dispositif
+          </button>
+        </footer>
       </section>
 
-      <section className="panel proposal-panel" aria-label="Proposition retenue">
-        {proposals.length > 0 && (
-          <div className="switcher" role="group" aria-label="Proposition affichée">
-            {proposals.map((p) => (
-              <button
-                key={p.id}
-                className={p.id === selected?.id ? 'active' : ''}
-                aria-pressed={p.id === selected?.id}
-                disabled={pending > 0 && p.id !== selected?.id}
-                title={pending > 0 ? 'Recalculez ou annulez les déplacements d’abord' : p.label}
-                onClick={() => select(p.id)}
-              >
-                {labels.get(p.id)}
-              </button>
-            ))}
-          </div>
-        )}
-
-        {pending > 0 && (
-          <div className="draft-bar" role="status">
-            <p>
-              {pending === 1 ? '1 position déplacée' : `${pending} positions déplacées`} sur le
-              plan.
-            </p>
-            <div className="actions">
-              <button className="primary" disabled={busy} onClick={applyDraft}>
-                Recalculer la couverture
-              </button>
-              <button className="quiet" disabled={busy} onClick={clearDraft}>
-                Annuler
-              </button>
-            </div>
-          </div>
-        )}
-
-        {!selected ? (
-          <div className="empty">
-            <p>Aucune proposition. Relancez le calcul pour en obtenir.</p>
-          </div>
-        ) : (
-          <>
-            <p className="proposal-status">
-              <span className={`status ${selected.status}`}>{STATUS_LABELS[selected.status]}</span>
-              {pending === 0 && (
-                <small>Réduisez la fenêtre pour déplacer les pilotes sur le plan.</small>
-              )}
-            </p>
-            {selected.metricsByPhase[phase] && (
-              <MetricsCard metrics={selected.metricsByPhase[phase]} />
-            )}
-
-            <h3>Couples engagés{mission.phaseCount > 1 && `, phase ${phase + 1}`}</h3>
-            {inPhase.length === 0 ? (
-              <small>Aucun couple engagé sur cette phase.</small>
-            ) : (
-              <ul className="list couples">
-                {inPhase.map((a) => {
-                  const res = mission.resources.find((r) => r.id === a.resourceId);
-                  const pilot = mission.pilots.find((p) => p.id === res?.pilotId);
-                  const moved = moves[moveKey(a.resourceId, a.phase)] !== undefined;
-                  return (
-                    <li key={a.resourceId}>
-                      <i
-                        className="swatch"
-                        style={{ background: resourceColor(a.resourceId, resourceIds) }}
-                      />
-                      <div>
-                        <b>{a.resourceId}</b> {pilot?.name}, {pilot?.level}
-                        {moved && <em className="moved">déplacé</em>}
-                        <small>
-                          {res ? modelName(res.droneModelId) : 'Drone inconnu'}, rayon{' '}
-                          {a.radiusM / 1000} km, {a.altitude.minM} à {a.altitude.maxM} m/sol
-                        </small>
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-
-            {selected.diagnostics.length > 0 && (
-              <>
-                <h3>Alertes</h3>
-                <ul className="diagnostics">
-                  {selected.diagnostics.map((d, i) => (
-                    <li key={i}>{d}</li>
-                  ))}
-                </ul>
-              </>
-            )}
-          </>
-        )}
-
-        <footer className="proposal-actions">
-          <button className="quiet" disabled={busy} onClick={solveAgain}>
-            Relancer le calcul
-          </button>
-          {selected && (
-            <button
-              className="quiet"
-              disabled={busy}
-              onClick={() =>
-                run(async () => {
-                  clearDraft();
-                  setState(await api.deleteProposal(mission.id, selected.id));
-                })
-              }
-            >
-              Supprimer
-            </button>
+      <section className="float-panel compare-window" aria-labelledby="compare-title">
+        <div className="float-scroll">
+          <h2 id="compare-title">
+            Comparaison
+            {mission.phaseCount > 1 && <small> en phase {phase + 1}</small>}
+          </h2>
+          {proposals.length === 0 ? (
+            <p className="empty">Aucune proposition à comparer.</p>
+          ) : (
+            <>
+              <CompareTable proposals={proposals} selectedId={selected?.id} phase={phase} />
+              <p className="hint">
+                En vert, la meilleure valeur de la phase. La colonne soulignée est la proposition
+                affichée.
+              </p>
+            </>
           )}
-          {selected && (
-            <button
-              className="primary"
-              disabled={busy || pending > 0 || selected.status === 'infaisable'}
-              title={pending > 0 ? 'Recalculez ou annulez les déplacements d’abord' : undefined}
-              onClick={() => run(async () => setState(await api.start(mission.id, selected.id)))}
-            >
-              Lancer l’opération
-            </button>
-          )}
-        </footer>
+        </div>
       </section>
     </>
   );

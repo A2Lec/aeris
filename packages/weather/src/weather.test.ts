@@ -6,7 +6,10 @@ import {
   excludedByWeather,
   fetchWeather,
   flyability,
+  isDaylight,
+  isPhaseDay,
   setWeatherFallback,
+  weatherForPhase,
 } from './index';
 
 const droneStandard: DroneModel = {
@@ -238,5 +241,67 @@ describe('Résilience fetchWeather (cache, timeout, fallback)', () => {
 
     const w = await fetchWeather(48.85, 2.35);
     expect(w).toEqual(custom);
+  });
+});
+
+describe('Calcul astronomique et alternance Jour / Nuit par phase', () => {
+  it('isDaylight calcule correctement le jour et la nuit à Toulouse', () => {
+    // 14 Octobre 2026 à Toulouse (43.6, 1.4)
+    const midi = new Date('2026-10-14T11:00:00Z'); // 13h locale -> plein jour
+    const minuit = new Date('2026-10-14T23:00:00Z'); // 01h locale -> nuit noire
+
+    expect(isDaylight(43.6, 1.4, midi)).toBe(true);
+    expect(isDaylight(43.6, 1.4, minuit)).toBe(false);
+  });
+
+  it('isPhaseDay détermine le jour/nuit selon la période de la phase', () => {
+    // Mission de 14h à 22h UTC avec 2 phases :
+    // Phase 0 : 14h - 18h UTC -> Jour
+    // Phase 1 : 18h - 22h UTC -> Nuit (milieu à 20h UTC / 22h local)
+    const mission = {
+      period: {
+        start: '2026-10-14T14:00:00Z',
+        end: '2026-10-14T22:00:00Z',
+      },
+      phaseCount: 2,
+    };
+
+    expect(isPhaseDay(mission, 0, 43.6, 1.4)).toBe(true);
+    expect(isPhaseDay(mission, 1, 43.6, 1.4)).toBe(false);
+  });
+
+  it('isPhaseDay renvoie true par défaut si la mission n’a pas de période', () => {
+    const mission = { phaseCount: 3 };
+    expect(isPhaseDay(mission, 0)).toBe(true);
+    expect(isPhaseDay(mission, 1)).toBe(true);
+  });
+
+  it('weatherForPhase adapte isDay et excludedByWeather filtre les drones en conséquence', () => {
+    const mission = {
+      period: {
+        start: '2026-10-14T14:00:00Z',
+        end: '2026-10-14T22:00:00Z',
+      },
+      phaseCount: 2,
+    };
+    const resources = [
+      { id: 'r-standard', pilotId: 'p1', droneModelId: 'mavic-3e', available: true },
+      { id: 'r-robuste', pilotId: 'p2', droneModelId: 'matrice-4t', available: true },
+    ];
+    const catalog = [droneStandard, droneRobuste];
+
+    // Phase 0 (Jour) : aucun drone n'est exclu pour motif nocturne
+    const wPhase0 = weatherForPhase(calmWeather, mission, 0, 43.6, 1.4);
+    expect(wPhase0.isDay).toBe(true);
+    const exclPhase0 = excludedByWeather(resources, catalog, wPhase0);
+    expect(exclPhase0['r-standard']).toBeUndefined();
+    expect(exclPhase0['r-robuste']).toBeUndefined();
+
+    // Phase 1 (Nuit) : le drone standard est exclu, le robuste est autorisé
+    const wPhase1 = weatherForPhase(calmWeather, mission, 1, 43.6, 1.4);
+    expect(wPhase1.isDay).toBe(false);
+    const exclPhase1 = excludedByWeather(resources, catalog, wPhase1);
+    expect(exclPhase1['r-standard']).toContain('nuit, drone non équipé');
+    expect(exclPhase1['r-robuste']).toBeUndefined();
   });
 });

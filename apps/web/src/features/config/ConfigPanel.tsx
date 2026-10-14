@@ -2,8 +2,16 @@ import type { MissionInput } from '@aeris/shared';
 import { useState } from 'react';
 import { api } from '../../api/client';
 import { useMissionStore } from '../../app/missionStore';
+import { resourceLabel } from '../resourceLabel';
 import { useConfigEditorStore } from './store';
 import './config.css';
+
+interface DroneDisplaySettings {
+  maxWindMs: number;
+  night: boolean;
+  rainOk: boolean;
+  zoomX: number;
+}
 
 /**
  * Étapes « Configuration » et « Phasage ».
@@ -15,8 +23,9 @@ export function ConfigPanel() {
   const editor = useConfigEditorStore();
   const [pilotName, setPilotName] = useState('');
   const [pilotLevel, setPilotLevel] = useState<'TP1' | 'TP2'>('TP1');
-  const [droneModelId, setDroneModelId] = useState('');
-  const [selectedPilotId, setSelectedPilotId] = useState('');
+  const [droneSettings, setDroneSettings] = useState<Record<string, DroneDisplaySettings>>({});
+  const [settingsResourceId, setSettingsResourceId] = useState<string>();
+  const [settingsDraft, setSettingsDraft] = useState<DroneDisplaySettings>();
   const activateDraw = (mode: Parameters<typeof editor.setDrawMode>[0]) => {
     editor.setEditing(false);
     editor.setDrawMode(editor.drawMode === mode ? 'idle' : mode);
@@ -157,34 +166,33 @@ export function ConfigPanel() {
         pilots: [...mission.pilots, { id: pilotId, name, level: pilotLevel }],
       });
       setState(updated);
-      setSelectedPilotId(pilotId);
     });
     setPilotName('');
   };
-  const addPilotDrone = () => {
-    const modelId = droneModelId || catalog?.drones[0]?.id;
-    if (
-      !selectedPilotId ||
-      !mission.pilots.some((pilot) => pilot.id === selectedPilotId) ||
-      !modelId ||
-      !catalog?.drones.some((drone) => drone.id === modelId) ||
-      mission.resources.some(
-        (resource) => resource.pilotId === selectedPilotId && resource.droneModelId === modelId,
-      )
-    )
+  const togglePilotDrone = (pilotId: string, droneModelId: string, checked: boolean) => {
+    const existingResource = mission.resources.find(
+      (resource) => resource.pilotId === pilotId && resource.droneModelId === droneModelId,
+    );
+    if (checked) {
+      if (existingResource) return;
+      void update({
+        resources: [
+          ...mission.resources,
+          {
+            id: `r-${crypto.randomUUID().slice(0, 8)}`,
+            pilotId,
+            droneModelId,
+            available: true,
+          },
+        ],
+      });
       return;
+    }
 
-    void update({
-      resources: [
-        ...mission.resources,
-        {
-          id: `r-${crypto.randomUUID().slice(0, 8)}`,
-          pilotId: selectedPilotId,
-          droneModelId: modelId,
-          available: true,
-        },
-      ],
-    });
+    if (existingResource)
+      void update({
+        resources: mission.resources.filter((resource) => resource.id !== existingResource.id),
+      });
   };
   const activePhases = (zone: (typeof mission.priorityZones)[number]) =>
     zone.phases?.length
@@ -209,6 +217,19 @@ export function ConfigPanel() {
     });
   };
   const modelName = (id: string) => catalog?.drones.find((d) => d.id === id)?.name ?? id;
+  const openDroneSettings = (resourceId: string, modelId: string) => {
+    const model = catalog?.drones.find((drone) => drone.id === modelId);
+    if (!model) return;
+    setSettingsResourceId(resourceId);
+    setSettingsDraft(
+      droneSettings[resourceId] ?? {
+        maxWindMs: model.maxWindMs,
+        night: model.night,
+        rainOk: model.rainOk,
+        zoomX: model.zoomX,
+      },
+    );
+  };
 
   return (
     <section>
@@ -350,50 +371,57 @@ export function ConfigPanel() {
         </button>
       </div>
       <div className="config-resource-form">
-        <strong>2. Choisir les drones pilotables</strong>
-        <label>
-          Télépilote
-          <select
-            value={selectedPilotId || mission.pilots[0]?.id || ''}
-            onChange={(event) => setSelectedPilotId(event.target.value)}
-            disabled={!mission.pilots.length}
-          >
-            {mission.pilots.map((pilot) => (
-              <option key={pilot.id} value={pilot.id}>
-                {pilot.name} ({pilot.level})
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Drone pilotable
-          <select
-            value={droneModelId || catalog?.drones[0]?.id || ''}
-            onChange={(event) => setDroneModelId(event.target.value)}
-            disabled={!catalog?.drones.length}
-          >
-            {catalog?.drones.map((drone) => (
-              <option key={drone.id} value={drone.id}>
-                {drone.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <button
-          onClick={addPilotDrone}
-          disabled={
-            busy ||
-            !mission.pilots.length ||
-            !catalog?.drones.length ||
-            mission.resources.some(
-              (resource) =>
-                resource.pilotId === (selectedPilotId || mission.pilots[0]?.id) &&
-                resource.droneModelId === (droneModelId || catalog?.drones[0]?.id),
-            )
-          }
-        >
-          Associer ce drone au pilote
-        </button>
+        <strong>2. Choisir les drones pilotables pour chaque télépilote</strong>
+        {!mission.pilots.length && <p className="config-help">Ajoutez d’abord un télépilote.</p>}
+        {mission.pilots.map((pilot) => {
+          const pilotResources = mission.resources.filter(
+            (resource) => resource.pilotId === pilot.id,
+          );
+          const selectedDroneNames = pilotResources
+            .map((resource) => modelName(resource.droneModelId))
+            .join(', ');
+          return (
+            <details className="pilot-drone-picker" key={pilot.id}>
+              <summary>
+                {pilot.name} ({pilot.level}) — {selectedDroneNames || 'Aucun drone sélectionné'}
+              </summary>
+              <div className="pilot-drone-options">
+                {catalog?.drones.map((drone) => {
+                  const resource = pilotResources.find((item) => item.droneModelId === drone.id);
+                  return (
+                    <div className="pilot-drone-option" key={drone.id}>
+                      <label>
+                        <input
+                          type="checkbox"
+                          checked={!!resource}
+                          disabled={busy}
+                          onChange={(event) =>
+                            togglePilotDrone(pilot.id, drone.id, event.currentTarget.checked)
+                          }
+                        />
+                        {drone.name}
+                      </label>
+                      {resource && (
+                        <>
+                          <button
+                            className="small"
+                            type="button"
+                            onClick={() => openDroneSettings(resource.id, drone.id)}
+                          >
+                            Paramètres
+                          </button>
+                          {droneSettings[resource.id] && (
+                            <span className="drone-settings-saved">Réglages saisis</span>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </details>
+          );
+        })}
       </div>
       <h4>Télépilotes</h4>
       <ul className="list">
@@ -406,7 +434,6 @@ export function ConfigPanel() {
                 className="small"
                 onClick={() => {
                   void update({ pilots: mission.pilots.filter((item) => item.id !== pilot.id) });
-                  if (selectedPilotId === pilot.id) setSelectedPilotId('');
                 }}
                 disabled={busy || hasResources}
                 aria-label={`Supprimer le télépilote ${pilot.name}`}
@@ -420,10 +447,9 @@ export function ConfigPanel() {
       </ul>
       <ul className="list">
         {mission.resources.map((r) => {
-          const p = mission.pilots.find((x) => x.id === r.pilotId);
           return (
             <li key={r.id}>
-              <b>{r.id}</b> {p?.name} ({p?.level}) — {modelName(r.droneModelId)}
+              <b title={r.id}>{resourceLabel(mission, r.id, catalog)}</b>
               <label className="resource-availability">
                 <input
                   type="checkbox"
@@ -495,7 +521,7 @@ export function ConfigPanel() {
               >
                 {mission.resources.map((resource) => (
                   <option key={resource.id} value={resource.id}>
-                    {resource.id}
+                    {resourceLabel(mission, resource.id, catalog)}
                   </option>
                 ))}
               </select>
@@ -513,6 +539,100 @@ export function ConfigPanel() {
           </li>
         )}
       </ul>
+
+      {settingsResourceId && settingsDraft && (
+        <div className="drone-settings-backdrop">
+          <section
+            className="drone-settings-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="drone-settings-title"
+          >
+            <h3 id="drone-settings-title">
+              Paramètres — {resourceLabel(mission, settingsResourceId, catalog)}
+            </h3>
+            <p className="config-help">
+              Ces réglages sont temporaires et ne sont pas encore pris en compte dans le calcul des
+              placements.
+            </p>
+            <label>
+              Résistance au vent (m/s max.)
+              <input
+                type="number"
+                min={0}
+                step={0.5}
+                value={settingsDraft.maxWindMs}
+                onChange={(event) =>
+                  setSettingsDraft({ ...settingsDraft, maxWindMs: Number(event.target.value) })
+                }
+              />
+            </label>
+            <label className="drone-setting-toggle">
+              <input
+                type="checkbox"
+                checked={settingsDraft.night}
+                onChange={(event) =>
+                  setSettingsDraft({ ...settingsDraft, night: event.currentTarget.checked })
+                }
+              />
+              Vision nocturne
+            </label>
+            <label className="drone-setting-toggle">
+              <input
+                type="checkbox"
+                checked={settingsDraft.rainOk}
+                onChange={(event) =>
+                  setSettingsDraft({ ...settingsDraft, rainOk: event.currentTarget.checked })
+                }
+              />
+              Résistance à la pluie
+            </label>
+            <label>
+              Zoom optique (×)
+              <input
+                type="number"
+                min={0}
+                step={1}
+                value={settingsDraft.zoomX}
+                onChange={(event) =>
+                  setSettingsDraft({ ...settingsDraft, zoomX: Number(event.target.value) })
+                }
+              />
+            </label>
+            <div className="drone-settings-actions">
+              <button
+                type="button"
+                onClick={() => {
+                  setSettingsResourceId(undefined);
+                  setSettingsDraft(undefined);
+                }}
+              >
+                Annuler
+              </button>
+              <button
+                className="primary"
+                type="button"
+                disabled={
+                  !Number.isFinite(settingsDraft.maxWindMs) ||
+                  settingsDraft.maxWindMs < 0 ||
+                  !Number.isFinite(settingsDraft.zoomX) ||
+                  settingsDraft.zoomX < 0
+                }
+                onClick={() => {
+                  setDroneSettings((current) => ({
+                    ...current,
+                    [settingsResourceId]: settingsDraft,
+                  }));
+                  setSettingsResourceId(undefined);
+                  setSettingsDraft(undefined);
+                }}
+              >
+                Enregistrer
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
 
       <h3>{status === 'phasage' ? 'Affectation aux phases' : 'Zones prioritaires'}</h3>
       {status === 'phasage' && (

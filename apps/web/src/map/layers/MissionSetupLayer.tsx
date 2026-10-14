@@ -5,6 +5,7 @@ import type { GeoJsonObject } from 'geojson';
 import { PolygonGeom } from '@aeris/shared';
 import { useMissionStore } from '../../app/missionStore';
 import { useConfigEditorStore } from '../../features/config/store';
+import { WORK_AREA_STYLE } from '../colors';
 
 const geo = (value: unknown) => value as GeoJsonObject;
 
@@ -62,7 +63,7 @@ export function MissionSetupLayer() {
     <GeoJSON
       key={JSON.stringify(workArea)}
       data={geo(workArea)}
-      style={{ color: '#0b1f3a', weight: 3, fillOpacity: 0.12, dashArray: '6 4' }}
+      style={{ ...WORK_AREA_STYLE, fillOpacity: 0.08 }}
     />
   ) : null;
 }

@@ -10,9 +10,7 @@
 import type { Assignment, Grid, ResourceCoverage } from '@aeris/shared';
 import { fusionner } from './coverage';
 import { distanceM } from './distance';
-import { indexerGrille, pourChaqueCelluleAPortee, type IndexGrille } from './voisinage';
-
-// TODO(P1) : ajouter `byResource` (tableau de CouverturePropre, optionnel) à CoverageLayers.
+import { indexerGrille, pourChaqueCelluleDuDrone, type IndexGrille } from './voisinage';
 
 /** Index (dans `assignments`) du couple responsable de chaque cellule, -1 si non couverte. */
 export function responsables(
@@ -24,7 +22,7 @@ export function responsables(
   const dist = new Float64Array(grid.cells.length).fill(Infinity);
   assignments.forEach((a, i) => {
     const p = a.position.coordinates;
-    pourChaqueCelluleAPortee(grid, index, p, a.radiusM, (cell) => {
+    pourChaqueCelluleDuDrone(grid, index, a, (cell) => {
       const d = distanceM(p, cell.center);
       const actuel = resp[cell.id];
       if (

@@ -1,91 +1,89 @@
-import type { MissionStatus } from '@aeris/shared';
-import { api } from './api/client';
 import { useMissionStore } from './app/missionStore';
 import { MapView } from './map/MapView';
 import { MissionLayers } from './map/layers/MissionLayers';
 import { MissionSetupLayer } from './map/layers/MissionSetupLayer';
+import { Topbar } from './components/Topbar';
+import { Legend } from './components/Legend';
+import { Welcome, useStartStore } from './components/Welcome';
 import { ConfigPanel } from './features/config/ConfigPanel';
 import { ScenariosPanel } from './features/scenarios/ScenariosPanel';
 import { ScenarioLayers } from './features/scenarios/ScenarioLayers';
 import { useScenarioStore } from './features/scenarios/store';
-import { LivePanel } from './features/live/LivePanel';
+import { LiveLeft } from './features/live/LiveLeft';
+import { LiveRight } from './features/live/LiveRight';
 import { LiveLayers } from './features/live/LiveLayers';
+import { useLiveStore } from './features/live/store';
+import './theme';
 
-const STEPS: { id: MissionStatus; label: string }[] = [
-  { id: 'config', label: 'Configuration' },
-  { id: 'phasage', label: 'Phasage' },
-  { id: 'propositions', label: 'Propositions' },
-  { id: 'conduite', label: 'Conduite' },
-];
-
-/** Assemblage uniquement : carte plein écran, barre du haut, panneaux de chaque fonctionnalité. */
+/**
+ * Assemblage uniquement : bandeau, panneau gauche, carte, panneau droit. En Propositions,
+ * la carte prend toute la largeur et les fenêtres de l'étape sont posées dessus.
+ * Chaque bloc vit dans sa fonctionnalité (features/<nom>) ou dans components/.
+ */
 export function App() {
-  const { state, error, setState, run } = useMissionStore();
-  const minimized = useScenarioStore((s) => s.minimized);
+  const { state, error } = useMissionStore();
+  const mode = useStartStore((s) => s.mode);
+  const { phase, selectedId, minimized } = useScenarioStore();
+  const live = useLiveStore((s) => s.live);
   const status = state?.status ?? 'config';
-  const current = STEPS.findIndex((s) => s.id === status);
+  const preparing = status === 'config' || status === 'phasage';
+  // Propositions : carte pleine largeur, fenêtres posées dessus (assombrie tant qu'elles sont ouvertes).
+  const proposing = status === 'propositions';
+  const layout = proposing ? 'no-sides' : preparing ? 'no-right' : '';
 
-  const goTo = (target: MissionStatus) =>
-    state &&
-    target !== 'conduite' &&
-    status !== 'conduite' &&
-    (target !== 'propositions' || state.proposals.length > 0) &&
-    run(async () => setState(await api.setStatus(state.mission.id, target)));
+  // Communes concernées : métriques de la phase affichée (proposition ou conduite).
+  const selected = state?.proposals.find((p) => p.id === selectedId) ?? state?.proposals[0];
+  const communes =
+    status === 'conduite'
+      ? live?.metrics.communes
+      : status === 'propositions'
+        ? selected?.metricsByPhase[phase]?.communes
+        : undefined;
 
-  // La carte s'assombrit derrière la fenêtre de choix des propositions.
-  const dimmed = status === 'propositions' && !minimized;
+  // Au lancement : choisir Planification (partir de rien) ou Conduite (reprendre un projet).
+  if (!state && mode !== 'planification') return <Welcome />;
 
   return (
-    <div className={`app ${dimmed ? 'dimmed' : ''}`}>
-      <MapView>
-        {state && (status === 'config' || status === 'phasage') && (
-          <MissionLayers mission={state.mission} />
-        )}
-        {!state && <MissionSetupLayer />}
-        {status === 'propositions' && <ScenarioLayers />}
-        {status === 'conduite' && <LiveLayers />}
-      </MapView>
+    <div className={`app ${layout}`}>
+      <Topbar />
 
-      <header className="topbar">
-        <span className="wordmark">Aeris</span>
-        <span className="project">
-          {state ? (
-            <>
-              Mission <b>{state.mission.name}</b>
-            </>
-          ) : (
-            'Aucune mission chargée'
+      {!proposing && (
+        <aside className="side side-left" aria-label="Panneau de travail">
+          {preparing && (
+            <div className="side-scroll">
+              <ConfigPanel />
+            </div>
           )}
-        </span>
-        <nav className="steps" aria-label="Étapes">
-          {STEPS.map((s, i) => (
-            <button
-              key={s.id}
-              className={i === current ? 'active' : i < current ? 'done' : ''}
-              aria-current={i === current ? 'step' : undefined}
-              onClick={() => goTo(s.id)}
-              disabled={!state || s.id === 'conduite'}
-            >
-              {s.label}
-            </button>
-          ))}
-        </nav>
-      </header>
-
-      {error && (
-        <p className="toast" role="alert">
-          {error}
-        </p>
-      )}
-      {(status === 'config' || status === 'phasage') && (
-        <aside className="panel dock">
-          <ConfigPanel />
+          {status === 'conduite' && <LiveLeft />}
         </aside>
       )}
-      {status === 'propositions' && <ScenariosPanel />}
+
+      <main className={`map-area ${proposing && !minimized ? 'dimmed' : ''}`}>
+        <MapView>
+          {state && preparing && (
+            <MissionLayers
+              mission={state.mission}
+              phase={status === 'phasage' ? phase : undefined}
+            />
+          )}
+          {!state && <MissionSetupLayer />}
+          {status === 'propositions' && <ScenarioLayers />}
+          {status === 'conduite' && <LiveLayers />}
+        </MapView>
+        {proposing && <ScenariosPanel />}
+        {state && !(proposing && !minimized) && (
+          <Legend withCoverage={!preparing} communes={communes} />
+        )}
+        {error && (
+          <p className="toast" role="alert">
+            {error}
+          </p>
+        )}
+      </main>
+
       {status === 'conduite' && (
-        <aside className="panel dock">
-          <LivePanel />
+        <aside className="side side-right" aria-label="Évaluation et décision">
+          <LiveRight />
         </aside>
       )}
     </div>

@@ -1,0 +1,485 @@
+/* Composants partagés : bandeau, légende, indicateurs, séparation, couples. */
+
+/* ─── Bandeau ──────────────────────────────────────────────────────────── */
+
+.topbar {
+  grid-area: top;
+  position: relative;
+  z-index: 1001;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  min-width: 0;
+}
+.identity {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+}
+/* Filet tricolore, à la manière des sites de l'État. */
+.tricolore {
+  width: 4px;
+  height: 32px;
+  border-radius: 2px;
+  background: linear-gradient(#000091 0 33%, #ffffff 33% 66%, #e1000f 66%);
+  box-shadow: 0 0 0 1px var(--border);
+}
+.identity b {
+  display: block;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--primary);
+  line-height: 1.1;
+}
+:root[data-theme='dark'] .identity b {
+  color: var(--text);
+}
+.identity small {
+  display: block;
+  line-height: 1.2;
+}
+.topbar-center {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-width: 0;
+}
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+}
+.topbar .segmented button {
+  padding: 4px 10px;
+}
+.weather {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+  text-align: right;
+  max-width: 220px;
+}
+.weather b {
+  font-size: 13px;
+  font-weight: 600;
+}
+.weather.caveat small {
+  color: var(--warn-text);
+}
+
+@media (max-width: 1380px) {
+  .identity small,
+  .weather small {
+    display: none;
+  }
+}
+@media (max-width: 1180px) {
+  .topbar {
+    overflow-x: auto;
+  }
+}
+
+/* ─── Légende flottante ────────────────────────────────────────────────── */
+
+.legend {
+  position: absolute;
+  z-index: 800;
+  left: 12px;
+  bottom: 28px;
+  width: 220px;
+  padding: 8px 10px;
+  font-size: 12px;
+}
+.legend-toggle {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  border: 0;
+  padding: 2px 0;
+  background: none;
+  font-weight: 600;
+}
+.legend ul {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+.legend li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.communes {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+.communes-list {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  max-height: 96px;
+  overflow-y: auto;
+  display: grid;
+  gap: 2px;
+}
+.communes-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+.communes-list span {
+  color: var(--text-2);
+  white-space: nowrap;
+}
+
+/* ─── Indicateurs ──────────────────────────────────────────────────────── */
+
+.kpis {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  min-width: 0;
+}
+.kpi-label {
+  font-size: 12px;
+  color: var(--text-2);
+}
+.kpi-value {
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.1;
+}
+.kpi-value small {
+  margin-left: 6px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.kpi-value .up {
+  color: var(--ok-text);
+}
+.kpi-value .down {
+  color: var(--danger-text);
+}
+.kpi small {
+  line-height: 1.3;
+}
+/* Détail par zone prioritaire : toute la largeur de la grille. */
+.kpi-zones {
+  grid-column: 1 / -1;
+}
+.zone-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+.zone-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 72px 40px;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.zone-list .zone-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.zone-list li small {
+  grid-column: 2 / -1;
+}
+.zone-pct {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.gauge {
+  display: block;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+.gauge span {
+  display: block;
+  height: 100%;
+  background: var(--info);
+}
+.gauge.priority span {
+  background: var(--priority);
+}
+.gauge.warn span {
+  background: var(--warn);
+}
+
+/* ─── Séparation ───────────────────────────────────────────────────────── */
+
+.separation h3 {
+  margin-top: 0;
+}
+.separation ol {
+  list-style: none;
+  counter-reset: step;
+  margin: 0;
+  padding: 0;
+}
+.separation li {
+  counter-increment: step;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+.separation li:last-child {
+  border-bottom: 0;
+}
+/* Numérotés : c'est une cascade, essayée dans cet ordre. */
+.separation li > div {
+  display: grid;
+  grid-template-columns: 20px 1fr;
+  column-gap: 6px;
+}
+.separation li > div::before {
+  content: counter(step);
+  grid-row: span 2;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--surface-2);
+  color: var(--text-2);
+}
+.separation li.appliquee > div::before {
+  background: var(--info-bg);
+  color: var(--info-text);
+}
+.separation li.impossible > div::before {
+  background: var(--danger-bg);
+  color: var(--danger-text);
+}
+.separation li b {
+  font-weight: 500;
+}
+.separation .notice {
+  margin-top: 10px;
+}
+
+/* ─── Couples ──────────────────────────────────────────────────────────── */
+
+.couple header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.couple header small {
+  display: block;
+}
+.couple.focused {
+  border-color: var(--warn);
+  box-shadow: 0 0 0 1px var(--warn);
+}
+.couple-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+/* ─── Titre de panneau et enchaînements ────────────────────────────────── */
+
+.proposal-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin: 14px 0 12px;
+}
+.proposal-title h2 {
+  margin: 0;
+}
+.segmented + .proposal-title {
+  margin-top: 14px;
+}
+.kpis + .separation,
+.compare-details + .separation,
+.stability-summary + .separation {
+  margin-top: 12px;
+}
+
+/* ─── Bloc logo + nom : bouton du menu latéral ─────────────────────────── */
+
+button.identity {
+  height: 44px;
+  padding: 0 10px 0 6px;
+  margin-left: -6px;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: none;
+  text-align: left;
+}
+button.identity:hover:not(:disabled),
+button.identity.open {
+  border-color: var(--border);
+  background: var(--surface-2);
+}
+.identity-text {
+  display: block;
+}
+.identity-chevron {
+  color: var(--text-2);
+  transition: transform 160ms ease;
+}
+button.identity.open .identity-chevron {
+  transform: rotate(180deg);
+}
+
+/* ─── Menu latéral ─────────────────────────────────────────────────────── */
+
+.menu-scrim {
+  position: fixed;
+  z-index: 1002;
+  inset: var(--topbar-h) 0 0 0;
+  background: rgb(15 23 42 / 0.25);
+}
+.app-menu {
+  position: fixed;
+  z-index: 1003;
+  top: var(--topbar-h);
+  left: 0;
+  bottom: 0;
+  width: 300px;
+  max-width: 85vw;
+  overflow-y: auto;
+  padding: 16px;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  box-shadow: 8px 0 28px rgb(15 23 42 / 0.16);
+  animation: menu-in 160ms ease-out;
+}
+.app-menu:focus {
+  outline: none;
+}
+@keyframes menu-in {
+  from {
+    transform: translateX(-12px);
+    opacity: 0;
+  }
+}
+.app-menu section + section {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+.app-menu h3 {
+  margin: 0 0 10px;
+  color: var(--text-2);
+  font-weight: 500;
+}
+.menu-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+.menu-actions {
+  display: grid;
+  gap: 6px;
+}
+.menu-actions button {
+  text-align: left;
+}
+.menu-help {
+  color: var(--text-2);
+  font-size: 12px;
+}
+.menu-drone-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.menu-drone-list li {
+  display: grid;
+  gap: 3px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 12px;
+}
+.menu-drone-list small {
+  color: var(--text-2);
+}
+.menu-drone-form {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+.menu-drone-form h4 {
+  margin: 0;
+  font-size: 13px;
+}
+.menu-drone-form label {
+  display: grid;
+  gap: 3px;
+  font-size: 12px;
+}
+.menu-drone-form input:not([type='checkbox']) {
+  width: 100%;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+.menu-drone-capabilities {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.menu-drone-capabilities legend {
+  padding: 0 4px;
+  font-size: 12px;
+}
+.menu-drone-form .menu-drone-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.menu-drone-form .menu-drone-toggle input {
+  margin: 0;
+}

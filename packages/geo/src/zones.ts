@@ -10,8 +10,6 @@ import { zoneActive } from './grid';
 import { presenceAuPireMoment } from './presence';
 import { indexerGrille } from './voisinage';
 
-// TODO(P1) : ajouter `byZone` (tableau de CouvertureZone) à Metrics.
-
 export type CouvertureZone = ZoneCoverage;
 
 export function couvertureParZone(

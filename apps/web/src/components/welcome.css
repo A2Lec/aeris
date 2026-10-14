@@ -1,0 +1,201 @@
+/* Écran d'accueil : choix Planification / Conduite, centré, nom en filigrane. */
+
+.welcome {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  display: grid;
+  place-items: center;
+  overflow: auto;
+  padding: 24px 16px;
+  background:
+    radial-gradient(ellipse at 50% 40%, var(--surface) 0%, var(--bg) 70%) fixed,
+    var(--bg);
+}
+
+/* Le nom en très grand derrière le contenu : la marque fait le fond. */
+.welcome-watermark {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: min(34vw, 46vh);
+  font-weight: 700;
+  letter-spacing: -0.05em;
+  line-height: 1;
+  color: var(--primary);
+  opacity: 0.05;
+  user-select: none;
+  pointer-events: none;
+}
+:root[data-theme='dark'] .welcome-watermark {
+  color: var(--text);
+  opacity: 0.04;
+}
+
+.welcome-content {
+  position: relative;
+  width: min(720px, 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 32px;
+}
+
+.welcome-brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.welcome-brand .tricolore {
+  width: 6px;
+  height: 56px;
+  border-radius: 3px;
+}
+.welcome-brand h1 {
+  margin: 0;
+  font-size: 44px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  color: var(--primary);
+}
+:root[data-theme='dark'] .welcome-brand h1 {
+  color: var(--text);
+}
+.welcome-brand p {
+  margin: 4px 0 0;
+  color: var(--text-2);
+  font-size: 15px;
+}
+
+.welcome-choices {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  width: 100%;
+}
+.choice {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 22px 22px 24px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  text-align: left;
+  font-weight: 400;
+  transition:
+    border-color 120ms ease,
+    box-shadow 120ms ease;
+}
+.choice svg {
+  color: var(--primary);
+  margin-bottom: 4px;
+}
+.choice b {
+  font-size: 20px;
+  font-weight: 600;
+}
+.choice span {
+  color: var(--text-2);
+  line-height: 1.5;
+}
+.choice:hover:not(:disabled) {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 1px var(--primary);
+}
+
+/* Étapes de la reprise en conduite */
+.welcome-step {
+  width: min(460px, 100%);
+  padding: 22px 24px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+.welcome-step.wide {
+  width: min(560px, 100%);
+}
+.welcome-step h2 {
+  margin-bottom: 6px;
+}
+.welcome-step > p {
+  color: var(--text-2);
+}
+.dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin: 16px 0;
+  padding: 28px 16px;
+  border: 1.5px dashed var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+}
+.welcome-nav {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  margin-top: 18px;
+}
+.welcome-nav .primary {
+  margin-left: auto;
+}
+
+.resume-couples {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  max-height: 44vh;
+  overflow-y: auto;
+}
+.resume-couples li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.resume-couples li:last-child {
+  border-bottom: 0;
+}
+.resume-couples label {
+  justify-content: flex-start;
+  gap: 10px;
+  margin: 0;
+  cursor: pointer;
+}
+.resume-couples small {
+  display: block;
+}
+.resume-couples input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--primary);
+}
+.resume-max {
+  margin-top: 14px;
+}
+.resume-step {
+  margin-top: 12px;
+  color: var(--primary);
+  font-weight: 500;
+}
+
+@media (max-width: 640px) {
+  .welcome-choices {
+    grid-template-columns: 1fr;
+  }
+  .welcome-brand h1 {
+    font-size: 34px;
+  }
+}
