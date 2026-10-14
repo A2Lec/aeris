@@ -1,5 +1,12 @@
 import type { SolveContext, SolveResult } from '@aeris/shared';
-import { buildProblem, isProblem, toResult, type Problem } from './problem';
+import {
+  buildProblem,
+  candidateCost,
+  isProblem,
+  marginal,
+  toResult,
+  type Problem,
+} from './problem';
 
 /** Nombre d'itérations du recuit (≈ 100 ms sur la mission de démo). */
 const ITERATIONS = 30_000;
@@ -46,11 +53,10 @@ class State {
     const j = this.choice[k]!;
     if (j < 0) return 0;
     const u = this.p.usable[k]!;
-    const { weights, overlapPenalty } = this.p;
-    let d = u.moveCost[j]! + (u.fixed ? 0 : this.p.droneCost);
+    let d = candidateCost(this.p, k, j);
     for (const i of u.covers[j]!) {
       const n = --this.count[i]!;
-      d += n === 0 ? -weights[i]! : overlapPenalty * weights[i]!;
+      d -= marginal(this.p, i, n);
     }
     this.choice[k] = -1;
     this.engaged--;
@@ -61,11 +67,10 @@ class State {
   /** Place le couple k (non placé) au candidat j ; renvoie la variation de score. */
   add(k: number, j: number): number {
     const u = this.p.usable[k]!;
-    const { weights, overlapPenalty } = this.p;
-    let d = -u.moveCost[j]! - (u.fixed ? 0 : this.p.droneCost);
+    let d = -candidateCost(this.p, k, j);
     for (const i of u.covers[j]!) {
       const n = this.count[i]!++;
-      d += n === 0 ? weights[i]! : -overlapPenalty * weights[i]!;
+      d += marginal(this.p, i, n);
     }
     this.choice[k] = j;
     this.engaged++;
@@ -76,10 +81,8 @@ class State {
   /** Gain qu'apporterait le couple k (non placé) au candidat j, sans modifier l'état. */
   gainAt(k: number, j: number): number {
     const u = this.p.usable[k]!;
-    const { weights, overlapPenalty } = this.p;
-    let d = -u.moveCost[j]! - (u.fixed ? 0 : this.p.droneCost);
-    for (const i of u.covers[j]!)
-      d += this.count[i]! === 0 ? weights[i]! : -overlapPenalty * weights[i]!;
+    let d = -candidateCost(this.p, k, j);
+    for (const i of u.covers[j]!) d += marginal(this.p, i, this.count[i]!);
     return d;
   }
 }

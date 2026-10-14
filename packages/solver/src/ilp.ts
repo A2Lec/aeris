@@ -5,12 +5,15 @@
  *   variables  x[j,k] ∈ {0,1}  le couple k est placé en candidat j (j ∈ zone limite de k)
  *              y[i]   ∈ [0,1]  la cellule i est servie (entière d'office une fois x entier)
  *              o[i]   ≥ 0      surcouverture de la cellule i (chevauchement)
+ *              z[i]   ∈ [0,1]  seconde couverture d'une cellule prioritaire (chevauchement voulu)
  *   max  Σ w_i·y_i − α·Σ w_i·o_i − Σ (β·d(j, prev_k) + γ)·x[j,k]
  *   s.c. Σ_j x[j,k] ≤ 1                    ∀k   (un couple, une position)
  *        Σ_{j,k} x[j,k] ≤ maxDrones             (arrêté préfectoral)
  *        y_i ≤ Σ_{(j,k) ∈ N(i)} x[j,k]     ∀i   (N(i) : couples capables à portée de i)
  *        o_i ≥ Σ_{(j,k) ∈ N(i)} x[j,k] − 1 ∀i
  *        x[j,k] = 1 si position imposée
+ * Cellules prioritaires avec chevauchement voulu : + s2_i·z_i, z_i ≤ Σ x[j,k] − y_i, o_i ≥ Σ x[j,k] − 2
+ * (s2 réglé par PRIORITY_OVERLAP, voir problem.ts).
  * γ (coût d'engagement) n'est non nul qu'en « économie de moyens ».
  *
  * Pour tenir dans le temps imparti, l'ILP travaille sur un modèle agrégé : cellules regroupées
@@ -22,7 +25,7 @@ import highsLoader, { type Highs } from 'highs';
 import { meetsRequirement, type SolveContext, type SolveResult } from '@aeris/shared';
 import { distanceM } from '@aeris/geo';
 import { anneal, seedOf } from './greedy';
-import { buildProblem, isProblem, score, toResult, type Problem } from './problem';
+import { buildProblem, candidateCost, isProblem, score, toResult, type Problem } from './problem';
 
 /** Temps total visé pour l'ILP (le contrat exige < 5 s, construction et recuit compris). */
 const ILP_TIME_LIMIT_S = 3;
@@ -60,14 +63,18 @@ function buildLp(p: Problem): Built | undefined {
   const block = Math.max(1, Math.round(BLOCK_M / grid.cellSizeM));
   const candStride = Math.max(1, Math.round(ILP_CANDIDATE_SPACING_M / grid.cellSizeM));
 
-  // Groupes : bloc × capacités requises, pondérés par la somme des poids de leurs cellules.
-  const groups = new Map<string, { w: number; x: number; y: number; n: number; cell: number }>();
+  // Groupes : bloc × capacités requises × prioritaire, pondérés par la somme des poids de leurs cellules.
+  const groups = new Map<
+    string,
+    { w: number; s2: number; x: number; y: number; n: number; cell: number }
+  >();
   for (const c of grid.cells) {
     const w = p.weights[c.id]!;
     if (w <= 0) continue;
-    const key = `${Math.floor(c.row / block)},${Math.floor(c.col / block)},${JSON.stringify(c.requires)}`;
-    const g = groups.get(key) ?? { w: 0, x: 0, y: 0, n: 0, cell: c.id };
+    const key = `${Math.floor(c.row / block)},${Math.floor(c.col / block)},${JSON.stringify(c.requires)},${c.priorityLevel > 0}`;
+    const g = groups.get(key) ?? { w: 0, s2: 0, x: 0, y: 0, n: 0, cell: c.id };
     g.w += w;
+    g.s2 += p.secondValue[c.id]!;
     g.x += c.center[0];
     g.y += c.center[1];
     g.n++;
@@ -75,6 +82,7 @@ function buildLp(p: Problem): Built | undefined {
   }
   const groupList = [...groups.values()].map((g) => ({
     w: g.w,
+    s2: g.s2,
     center: [g.x / g.n, g.y / g.n] as [number, number],
     requires: grid.cells[g.cell]!.requires,
   }));
@@ -94,8 +102,9 @@ function buildLp(p: Problem): Built | undefined {
       const name = `x${k}_${j}`;
       xVars.set(name, [k, j]);
       vars.push(name);
-      const cost = u.moveCost[j]! + (u.fixed ? 0 : p.droneCost);
-      if (cost > 1e-6) objective.push(`- ${num(cost)} ${name}`);
+      const cost = candidateCost(p, k, j);
+      if (Math.abs(cost) > 1e-6)
+        objective.push(`${cost > 0 ? '-' : '+'} ${num(Math.abs(cost))} ${name}`);
       groupList.forEach((g, gi) => {
         if (meetsRequirement(u.model, g.requires) && distanceM(pos, g.center) <= u.radius)
           neighbors[gi]!.push(name);
@@ -109,18 +118,30 @@ function buildLp(p: Problem): Built | undefined {
   if (all.length === 0) return undefined;
 
   const coverRows: string[] = [];
+  const zBounds: string[] = [];
   groupList.forEach((g, gi) => {
     const nb = neighbors[gi]!;
     if (nb.length === 0) return;
-    objective.push(`+ ${num(g.w)} y${gi}`, `- ${num(p.overlapPenalty * g.w)} o${gi}`);
+    objective.push(`+ ${num(g.w)} y${gi}`);
     coverRows.push(` cy${gi}: y${gi}\n${terms(nb.map((v) => `- ${v}`))}\n  <= 0`);
-    coverRows.push(` co${gi}:\n${terms(nb.map((v) => `+ ${v}`))}\n  - o${gi} <= 1`);
+    if (g.s2 > 0) {
+      // Chevauchement recherché (zone prioritaire) : z = seconde couverture, bonifiée ;
+      // seules la troisième et les suivantes sont pénalisées.
+      objective.push(`+ ${num(g.s2)} z${gi}`, `- ${num(p.overlapPenalty * g.w)} o${gi}`);
+      coverRows.push(` cz${gi}: z${gi} + y${gi}\n${terms(nb.map((v) => `- ${v}`))}\n  <= 0`);
+      coverRows.push(` co${gi}:\n${terms(nb.map((v) => `+ ${v}`))}\n  - o${gi} <= 2`);
+      zBounds.push(` 0 <= z${gi} <= 1`);
+    } else {
+      objective.push(`- ${num(-g.s2)} o${gi}`);
+      coverRows.push(` co${gi}:\n${terms(nb.map((v) => `+ ${v}`))}\n  - o${gi} <= 1`);
+    }
   });
   if (objective.length === 0) return undefined;
 
   const bounds = groupList
     .map((_, gi) => (neighbors[gi]!.length ? ` 0 <= y${gi} <= 1` : ''))
-    .filter(Boolean);
+    .filter(Boolean)
+    .concat(zBounds);
   const lp = [
     'Maximize',
     ' obj:',
