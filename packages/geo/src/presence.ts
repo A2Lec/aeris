@@ -4,11 +4,13 @@
  * présents au moment le moins favorable de la phase. C'est le chiffre prudent : « à tout
  * instant, au moins n drones voient cette cellule ».
  *
+ * Un drone ne couvre que son secteur s'il en a un (voisinage.ts, pourChaqueCelluleDuDrone).
+ *
  * La phase est bornée par le premier début et la dernière fin des créneaux ; un drone sans
  * créneau est présent toute la phase. Sans aucun créneau, c'est un simple comptage.
  */
 import type { Assignment, Cell, Grid } from '@aeris/shared';
-import { pourChaqueCelluleAPortee, type IndexGrille } from './voisinage';
+import { pourChaqueCelluleDuDrone, type IndexGrille } from './voisinage';
 
 /** Bornes des intervalles élémentaires de la phase (chaînes ISO, triées, sans doublon). */
 function bornesDeLaPhase(assignments: Assignment[]): string[] {
@@ -35,7 +37,7 @@ export function presenceAuPireMoment(
   if (bornes.length < 2) {
     const counts = new Uint16Array(n);
     for (const a of assignments) {
-      pourChaqueCelluleAPortee(grid, index, a.position.coordinates, a.radiusM, (cell) => {
+      pourChaqueCelluleDuDrone(grid, index, a, (cell) => {
         if (garde(a, cell)) counts[cell.id]++;
       });
     }
@@ -52,7 +54,7 @@ export function presenceAuPireMoment(
       (_, i) => !a.slot || (a.slot.start <= bornes[i] && bornes[i + 1] <= a.slot.end),
     );
     if (!present.some(Boolean)) continue;
-    pourChaqueCelluleAPortee(grid, index, a.position.coordinates, a.radiusM, (cell) => {
+    pourChaqueCelluleDuDrone(grid, index, a, (cell) => {
       if (!garde(a, cell)) return;
       for (let i = 0; i < k; i++) if (present[i]) parInstant[cell.id * k + i]++;
     });
