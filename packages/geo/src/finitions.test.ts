@@ -116,7 +116,7 @@ describe('stabilité au pire moment', () => {
       { ...deux[1], slot: { start: '10:00', end: '12:00' } },
     ];
     const s = mesurerStabilite(grid, deux, avecCreneau);
-    expect(s.deplaces).toEqual([]);
-    expect(s.ecarts.coverage).toBeLessThan(0);
+    expect(s.moved).toEqual([]);
+    expect(s.deltas.coverage).toBeLessThan(0);
   });
 });

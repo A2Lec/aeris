@@ -39,9 +39,10 @@ Plusieurs types (`Stabilite`, `CouverturePropre`, `CouvertureZone`, `Indicateurs
 
 - **Servie** : vue par au moins un drone qui a les capacités requises par la zone (zoom,
   thermique, nuit).
-- **Redondance** (r, fixé par l'utilisateur, 1 par défaut) : chevauchement **utile** = de 2 à
-  r drones ; **superflu** = plus de r ; crédit partiel min(n, r) / r dans la couverture
-  pondérée. Avec r = 1 partout, on retrouve exactement `computeMetrics`.
+- **Redondance** (`zone.redundancy` = r, fixé par l'utilisateur, 1 par défaut) : chevauchement
+  **utile** = de 2 à r drones en même temps ; **superflu** = plus de r ; **redondance atteinte**
+  = part des cellules qui ont leurs r drones capables à tout instant (`computeMetrics`).
+  `mesurerRedondance` ajoute la couverture pondérée à crédit partiel min(n, r) / r.
 - **Responsable** d'une cellule : le couple le plus proche parmi ceux qui la couvrent ; à
   égalité, le plus petit identifiant (résultat indépendant de l'ordre).
 
