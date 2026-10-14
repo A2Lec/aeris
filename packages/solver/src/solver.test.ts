@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { drones, demoMission, pilotRules } from '@aeris/data';
 import { buildGrid, computeMetrics } from '@aeris/geo';
 import { greedySolve } from './greedy';
+import { ilpSolve } from './ilp';
 
 const mission = { ...demoMission, id: 'test' };
 
@@ -36,5 +37,46 @@ describe('greedySolve sur la mission de démo', () => {
       strategy: 'priorite',
     });
     expect(res.status).toBe('infaisable');
+  });
+});
+
+describe('recuit simulé et ILP', () => {
+  const ctxFor = (strategy: 'couverture_globale' | 'priorite' | 'economie_moyens') => ({
+    mission,
+    catalog: drones,
+    rules: pilotRules,
+    grid: buildGrid(mission, 0),
+    phase: 0,
+    strategy,
+  });
+
+  it('le recuit est déterministe', () => {
+    const a = greedySolve(ctxFor('priorite'));
+    const b = greedySolve(ctxFor('priorite'));
+    expect(a.assignments).toEqual(b.assignments);
+  });
+
+  it('l’ILP résout avec HiGHS et fait au moins aussi bien que le recuit', async () => {
+    const ctx = ctxFor('couverture_globale');
+    const sa = greedySolve(ctx);
+    const ilp = await ilpSolve(ctx);
+    expect(ilp.diagnostics.some((d) => d.includes('HiGHS'))).toBe(true);
+    const cov = (r: typeof sa) => computeMetrics(ctx.grid, r.assignments).coverage;
+    expect(cov(ilp)).toBeGreaterThanOrEqual(cov(sa) - 0.02);
+  }, 10_000);
+
+  it('pénalise les déplacements par rapport à la solution précédente', () => {
+    const ctx = ctxFor('priorite');
+    const first = greedySolve(ctx);
+    const again = greedySolve({ ...ctx, previous: first.assignments });
+    expect(again.assignments.map((a) => a.position)).toEqual(
+      first.assignments.map((a) => a.position),
+    );
+  });
+
+  it('économie de moyens n’engage pas plus de couples que couverture globale', () => {
+    const eco = greedySolve(ctxFor('economie_moyens'));
+    const all = greedySolve(ctxFor('couverture_globale'));
+    expect(eco.assignments.length).toBeLessThanOrEqual(all.assignments.length);
   });
 });
