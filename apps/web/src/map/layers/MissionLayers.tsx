@@ -104,6 +104,7 @@ export function MissionLayers({ mission, phase }: { mission: Mission; phase?: nu
                 geometry,
                 level: editor.priorityLevel,
                 requires: {},
+                redundancy: 1,
               },
             ],
           };
