@@ -4,6 +4,7 @@ import { MissionLayers } from './map/layers/MissionLayers';
 import { MissionSetupLayer } from './map/layers/MissionSetupLayer';
 import { Topbar } from './components/Topbar';
 import { Legend } from './components/Legend';
+import { Welcome, useStartStore } from './components/Welcome';
 import { ConfigPanel } from './features/config/ConfigPanel';
 import { ScenariosPanel } from './features/scenarios/ScenariosPanel';
 import { ScenarioLayers } from './features/scenarios/ScenarioLayers';
@@ -21,6 +22,7 @@ import './theme';
  */
 export function App() {
   const { state, error } = useMissionStore();
+  const mode = useStartStore((s) => s.mode);
   const { phase, selectedId, minimized } = useScenarioStore();
   const live = useLiveStore((s) => s.live);
   const status = state?.status ?? 'config';
@@ -37,6 +39,9 @@ export function App() {
       : status === 'propositions'
         ? selected?.metricsByPhase[phase]?.communes
         : undefined;
+
+  // Au lancement : choisir Planification (partir de rien) ou Conduite (reprendre un projet).
+  if (!state && mode !== 'planification') return <Welcome />;
 
   return (
     <div className={`app ${layout}`}>

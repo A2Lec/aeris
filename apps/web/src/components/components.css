@@ -380,3 +380,11 @@ button.identity.open .identity-chevron {
   align-items: center;
   gap: 12px;
 }
+
+.menu-actions {
+  display: grid;
+  gap: 6px;
+}
+.menu-actions button {
+  text-align: left;
+}
