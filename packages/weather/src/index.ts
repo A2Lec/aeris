@@ -10,33 +10,111 @@ interface OpenMeteoCurrent {
   };
 }
 
-/** Météo courante via Open-Meteo (gratuit, sans compte ni clé). */
+/** Météo par défaut de secours en mode hors-ligne pour la résilience en démo. */
+export const DEFAULT_OFFLINE_WEATHER: Weather = {
+  windMs: 3.5,
+  gustMs: 6.0,
+  precipitationMm: 0,
+  temperatureC: 18,
+  isDay: true,
+  fetchedAt: '2026-10-14T08:00:00.000Z',
+};
+
+/** Durée de validité du cache météo en mémoire (10 minutes). */
+export const WEATHER_CACHE_TTL_MS = 10 * 60 * 1000;
+/** Timeout de la requête HTTP Open-Meteo (4 secondes). */
+export const WEATHER_FETCH_TIMEOUT_MS = 4000;
+
+interface CacheEntry {
+  weather: Weather;
+  cachedAt: number;
+}
+
+const weatherCache = new Map<string, CacheEntry>();
+let fallbackWeatherOverride: Weather | null | undefined = undefined;
+
+/** Permet d'injecter ou désactiver (null) une météo de repli pour les tests ou la démo. */
+export function setWeatherFallback(fallback: Weather | null | undefined): void {
+  fallbackWeatherOverride = fallback;
+}
+
+/** Vide le cache météo en mémoire. */
+export function clearWeatherCache(): void {
+  weatherCache.clear();
+}
+
+/**
+ * Météo courante via Open-Meteo (gratuit, sans compte ni clé).
+ * Intègre un timeout strict, un cache en mémoire et un repli hors-ligne en cas de coupure réseau.
+ */
 export const fetchWeather: WeatherProvider = async (lat, lng) => {
+  const cacheKey = `${lat.toFixed(2)},${lng.toFixed(2)}`;
+  const now = Date.now();
+  const cached = weatherCache.get(cacheKey);
+
+  // Si une entrée en cache est encore fraîche, on la réutilise immédiatement
+  if (cached && now - cached.cachedAt < WEATHER_CACHE_TTL_MS) {
+    return cached.weather;
+  }
+
   const url =
     `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}` +
     `&current=temperature_2m,precipitation,wind_speed_10m,wind_gusts_10m,is_day&wind_speed_unit=ms`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`Open-Meteo a répondu ${res.status}`);
-  const { current } = (await res.json()) as OpenMeteoCurrent;
-  return {
-    windMs: current.wind_speed_10m,
-    gustMs: current.wind_gusts_10m,
-    precipitationMm: current.precipitation,
-    temperatureC: current.temperature_2m,
-    isDay: current.is_day === 1,
-    fetchedAt: new Date().toISOString(),
-  };
+
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(WEATHER_FETCH_TIMEOUT_MS) });
+    if (!res.ok) throw new Error(`Open-Meteo a répondu ${res.status}`);
+    const { current } = (await res.json()) as OpenMeteoCurrent;
+    const weather: Weather = {
+      windMs: current.wind_speed_10m,
+      gustMs: current.wind_gusts_10m,
+      precipitationMm: current.precipitation,
+      temperatureC: current.temperature_2m,
+      isDay: current.is_day === 1,
+      fetchedAt: new Date().toISOString(),
+    };
+    weatherCache.set(cacheKey, { weather, cachedAt: now });
+    return weather;
+  } catch (err) {
+    // 1. Repli configuré explicitement (ou re-throw si configuré à null pour tests/démo stricte)
+    if (fallbackWeatherOverride !== undefined) {
+      if (fallbackWeatherOverride === null) throw err;
+      return fallbackWeatherOverride;
+    }
+    // 2. Repli sur le cache de cette zone (même expiré)
+    if (cached) {
+      return cached.weather;
+    }
+    // 3. Repli sur n'importe quelle entrée météo en cache
+    for (const entry of weatherCache.values()) {
+      return entry.weather;
+    }
+    // 4. Météo par défaut pour résister aux coupures réseau en démo
+    return {
+      ...DEFAULT_OFFLINE_WEATHER,
+      fetchedAt: new Date().toISOString(),
+    };
+  }
 };
 
 /** Le modèle peut-il voler dans ces conditions ? Raisons lisibles pour l'opérateur. */
 export function flyability(model: DroneModel, w: Weather): { ok: boolean; reasons: string[] } {
   const reasons: string[] = [];
-  if (w.gustMs > model.maxWindMs) reasons.push(`rafales ${w.gustMs} m/s > ${model.maxWindMs} m/s`);
-  if (w.precipitationMm > 0 && !model.rainOk) reasons.push('pluie, drone non étanche');
+  if (w.gustMs > model.maxWindMs) {
+    reasons.push(`rafales ${w.gustMs} m/s > ${model.maxWindMs} m/s`);
+  }
+  if (w.windMs > model.maxWindMs) {
+    reasons.push(`vent ${w.windMs} m/s > ${model.maxWindMs} m/s`);
+  }
+  if (w.precipitationMm > 0 && !model.rainOk) {
+    reasons.push('pluie, drone non étanche');
+  }
   if (w.temperatureC < model.minTempC || w.temperatureC > model.maxTempC) {
     reasons.push(`température ${w.temperatureC} °C hors plage`);
   }
-  if (!w.isDay && !model.night) reasons.push('nuit, drone non équipé');
+  if (!w.isDay && !model.night) {
+    reasons.push('nuit, drone non équipé');
+  }
   return { ok: reasons.length === 0, reasons };
 }
 
