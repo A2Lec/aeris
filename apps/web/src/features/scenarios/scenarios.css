@@ -1,0 +1,258 @@
+/* Étape « Propositions » : proposition retenue à gauche, comparaison à droite. */
+
+.proposal-panel {
+  left: var(--gap);
+  width: min(400px, calc(50% - 1.5 * var(--gap)));
+  display: flex;
+  flex-direction: column;
+  /* Place réservée au bouton réduire / rouvrir, posé sur le haut du panneau. */
+  padding-top: 56px;
+  padding-bottom: 0;
+  animation: panel-in-left 180ms ease-out;
+}
+.compare-panel {
+  right: var(--gap);
+  width: min(440px, calc(50% - 1.5 * var(--gap)));
+  animation: panel-in-right 180ms ease-out;
+}
+@keyframes panel-in-left {
+  from {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+}
+@keyframes panel-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(8px);
+  }
+}
+
+.panel-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.panel-head h2 {
+  margin: 0;
+}
+
+/* ─── Tableau de comparaison (lecture seule) ─────────────────────────────── */
+
+.compare {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+.compare th,
+.compare td {
+  padding: 7px 6px;
+  text-align: right;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--rule);
+}
+.compare thead th {
+  font-weight: 500;
+  color: var(--dim);
+  vertical-align: bottom;
+}
+.compare thead th.selected {
+  color: var(--text);
+  box-shadow: inset 0 -2px 0 var(--steel);
+}
+.compare tbody th {
+  text-align: left;
+  font-weight: 400;
+  color: var(--dim);
+}
+.compare .sense {
+  margin-left: 4px;
+  font-size: 11px;
+  opacity: 0.7;
+}
+.compare td.selected {
+  background: rgb(169 199 232 / 0.07);
+}
+.compare td.best {
+  color: var(--best);
+  font-weight: 600;
+}
+.compare td.warn {
+  color: var(--warn);
+}
+.compare tbody tr:last-child > * {
+  border-bottom: 0;
+}
+.legend {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: var(--dim);
+}
+.empty {
+  color: var(--dim);
+}
+
+/* ─── Proposition retenue ────────────────────────────────────────────────── */
+
+/* Une proposition = un bouton : un seul clic pour changer. */
+.switcher {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 2px;
+  margin-bottom: 12px;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+}
+.switcher button {
+  flex: 1 1 auto;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--dim);
+  padding: 6px 10px;
+}
+.switcher button:hover:not(:disabled) {
+  color: var(--text);
+}
+.switcher button.active {
+  background: var(--text);
+  color: #0f1720;
+  font-weight: 600;
+}
+
+.proposal-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 4px;
+}
+
+.draft-bar {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border: 1px solid rgb(232 177 90 / 0.45);
+  border-radius: 8px;
+  background: rgb(232 177 90 / 0.08);
+}
+.draft-bar p {
+  margin: 0;
+  color: var(--warn);
+}
+.draft-bar .actions {
+  margin-top: 8px;
+}
+
+.couples li {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+.couples small {
+  display: block;
+}
+.swatch {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  margin-top: 5px;
+  border-radius: 50%;
+}
+.moved {
+  margin-left: 8px;
+  font-size: 12px;
+  font-style: normal;
+  color: var(--warn);
+}
+
+.proposal-actions {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  gap: 8px;
+  margin: 16px -18px 0;
+  padding: 12px 18px 14px;
+  background: linear-gradient(transparent, #0f1720 30%);
+  border-top: 1px solid var(--rule);
+}
+.proposal-actions button {
+  white-space: nowrap;
+}
+.proposal-actions .primary {
+  margin-left: auto;
+}
+
+/* ─── Bouton réduire / rouvrir : même place ouvert ou réduit ───────────────── */
+
+.window-toggle {
+  position: absolute;
+  z-index: 1001;
+  top: calc(var(--bar-h) + var(--gap));
+  left: var(--gap);
+  height: 48px;
+  max-width: min(400px, calc(50% - 1.5 * var(--gap)));
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 16px 0 14px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: none;
+  font-size: 17px;
+  font-weight: 600;
+  text-align: left;
+}
+.window-toggle span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.window-toggle svg {
+  flex: none;
+  color: var(--dim);
+}
+.window-toggle:hover:not(:disabled) {
+  border-color: var(--rule);
+}
+.window-toggle em {
+  font-style: normal;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--warn);
+  white-space: nowrap;
+}
+
+.restore {
+  position: absolute;
+  z-index: 1000;
+  top: calc(var(--bar-h) + var(--gap));
+  left: var(--gap);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.window-toggle.floating {
+  position: static;
+  max-width: 60vw;
+  background: var(--night);
+  border-color: var(--rule);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 6px 24px rgb(0 0 0 / 0.35);
+}
+.restore .phase-tabs button:not(.active) {
+  background: var(--night);
+}
+
+@media (max-width: 760px) {
+  .compare-panel {
+    display: none;
+  }
+  .proposal-panel,
+  .window-toggle {
+    right: var(--gap);
+    width: auto;
+    max-width: none;
+  }
+}

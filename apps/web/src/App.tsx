@@ -7,6 +7,7 @@ import { MissionSetupLayer } from './map/layers/MissionSetupLayer';
 import { ConfigPanel } from './features/config/ConfigPanel';
 import { ScenariosPanel } from './features/scenarios/ScenariosPanel';
 import { ScenarioLayers } from './features/scenarios/ScenarioLayers';
+import { useScenarioStore } from './features/scenarios/store';
 import { LivePanel } from './features/live/LivePanel';
 import { LiveLayers } from './features/live/LiveLayers';
 
@@ -17,9 +18,10 @@ const STEPS: { id: MissionStatus; label: string }[] = [
   { id: 'conduite', label: 'Conduite' },
 ];
 
-/** Assemblage uniquement : chaque fonctionnalité vit dans features/<nom>/. */
+/** Assemblage uniquement : carte plein écran, barre du haut, panneaux de chaque fonctionnalité. */
 export function App() {
   const { state, error, setState, run } = useMissionStore();
+  const minimized = useScenarioStore((s) => s.minimized);
   const status = state?.status ?? 'config';
   const current = STEPS.findIndex((s) => s.id === status);
 
@@ -30,40 +32,62 @@ export function App() {
     (target !== 'propositions' || state.proposals.length > 0) &&
     run(async () => setState(await api.setStatus(state.mission.id, target)));
 
+  // La carte s'assombrit derrière la fenêtre de choix des propositions.
+  const dimmed = status === 'propositions' && !minimized;
+
   return (
-    <div className="layout">
-      <aside className="sidebar">
-        <header className="brand">
-          <h1>Aeris</h1>
-          <p>Planifier · Coordonner · Couvrir</p>
-        </header>
-        <nav className="stepper">
+    <div className={`app ${dimmed ? 'dimmed' : ''}`}>
+      <MapView>
+        {state && (status === 'config' || status === 'phasage') && (
+          <MissionLayers mission={state.mission} />
+        )}
+        {!state && <MissionSetupLayer />}
+        {status === 'propositions' && <ScenarioLayers />}
+        {status === 'conduite' && <LiveLayers />}
+      </MapView>
+
+      <header className="topbar">
+        <span className="wordmark">Aeris</span>
+        <span className="project">
+          {state ? (
+            <>
+              Mission <b>{state.mission.name}</b>
+            </>
+          ) : (
+            'Aucune mission chargée'
+          )}
+        </span>
+        <nav className="steps" aria-label="Étapes">
           {STEPS.map((s, i) => (
             <button
               key={s.id}
               className={i === current ? 'active' : i < current ? 'done' : ''}
+              aria-current={i === current ? 'step' : undefined}
               onClick={() => goTo(s.id)}
               disabled={!state || s.id === 'conduite'}
             >
-              {i + 1}. {s.label}
+              {s.label}
             </button>
           ))}
         </nav>
-        {error && <p className="error">{error}</p>}
-        {(status === 'config' || status === 'phasage') && <ConfigPanel />}
-        {status === 'propositions' && <ScenariosPanel />}
-        {status === 'conduite' && <LivePanel />}
-      </aside>
-      <main>
-        <MapView>
-          {state && (status === 'config' || status === 'phasage') && (
-            <MissionLayers mission={state.mission} />
-          )}
-          {!state && <MissionSetupLayer />}
-          {status === 'propositions' && <ScenarioLayers />}
-          {status === 'conduite' && <LiveLayers />}
-        </MapView>
-      </main>
+      </header>
+
+      {error && (
+        <p className="toast" role="alert">
+          {error}
+        </p>
+      )}
+      {(status === 'config' || status === 'phasage') && (
+        <aside className="panel dock">
+          <ConfigPanel />
+        </aside>
+      )}
+      {status === 'propositions' && <ScenariosPanel />}
+      {status === 'conduite' && (
+        <aside className="panel dock">
+          <LivePanel />
+        </aside>
+      )}
     </div>
   );
 }
