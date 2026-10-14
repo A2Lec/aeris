@@ -36,10 +36,12 @@ export const buildGrid: GridBuilder = (mission, phase) => {
 
       let priorityLevel = 0;
       let requires: Requirement = {};
+      let redundancy = 1;
       for (const z of active) {
         if (!booleanPointInPolygon(center, z.geometry)) continue;
         priorityLevel = Math.max(priorityLevel, z.level);
         requires = mergeRequirement(requires, z.requires);
+        redundancy = Math.max(redundancy, z.redundancy);
       }
 
       let forbidden = false;
@@ -64,6 +66,7 @@ export const buildGrid: GridBuilder = (mission, phase) => {
         forbidden,
         urban,
         maxHeightM,
+        redundancy,
       });
     }
   }

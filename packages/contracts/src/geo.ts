@@ -9,7 +9,9 @@ import {
   type GridBuilder,
   type MetricsEngine,
   type Mission,
+  type StabilityEngine,
 } from '@aeris/shared';
+import { Stability } from '@aeris/shared';
 import { areaM2, inArea, makeAssignment } from './helpers';
 
 const phasesOf = (m: Mission) => [...Array(m.phaseCount).keys()];
@@ -56,6 +58,7 @@ export function gridContract(buildGrid: GridBuilder) {
             if (containing.some((z) => z.requires.thermal))
               expect(cell.requires.thermal).toBe(true);
             if (containing.some((z) => z.requires.night)) expect(cell.requires.night).toBe(true);
+            expect(cell.redundancy).toBe(Math.max(1, ...containing.map((z) => z.redundancy)));
             const minZoom = Math.max(0, ...containing.map((z) => z.requires.minZoomX ?? 0));
             if (minZoom > 0) expect(cell.requires.minZoomX).toBe(minZoom);
 
@@ -98,6 +101,15 @@ export function metricsContract(computeMetrics: MetricsEngine, buildGrid: GridBu
           ] as const) {
             expect(m[k]).toBeGreaterThanOrEqual(0);
             expect(m[k]).toBeLessThanOrEqual(1);
+          }
+          for (const k of ['usefulOverlap', 'superfluousOverlap', 'redundancyMet'] as const) {
+            if (m[k] === undefined) continue;
+            expect(m[k]).toBeGreaterThanOrEqual(0);
+            expect(m[k]).toBeLessThanOrEqual(1);
+          }
+          // Chevauchement voulu + superflu = tout le chevauchement.
+          if (m.usefulOverlap !== undefined && m.superfluousOverlap !== undefined) {
+            close(m.usefulOverlap + m.superfluousOverlap, m.overlap, 1e-9, 1e-9);
           }
           close(
             m.coveredAreaM2 + m.uncoveredAreaM2 + m.forbiddenAreaM2,
@@ -179,6 +191,69 @@ export function coverageContract(
             close(areaM2(layers.covered) + areaM2(layers.gaps), coverableM2, tol, grid.cellAreaM2);
           });
         }
+      });
+    }
+  });
+}
+
+/** Contrat de la mesure de stabilité : rien ne bouge ⇒ tout à zéro ; un retrait est vu et chiffré. */
+export function stabilityContract(stability: StabilityEngine, buildGrid: GridBuilder) {
+  describe('Contrat StabilityEngine', () => {
+    for (const tm of testMissions) {
+      describe(tm.name, () => {
+        const grid = buildGrid(tm.mission, 0);
+        const before = spread(grid);
+
+        it('dispositif identique : aucun changement', () => {
+          const s = stability(grid, before, before.slice().reverse());
+          expect(() => Stability.parse(s)).not.toThrow();
+          expect(s.phase).toBe(grid.phase);
+          expect(s.moved).toEqual([]);
+          expect(s.added).toEqual([]);
+          expect(s.removed).toEqual([]);
+          expect(s.totalShiftM).toBe(0);
+          expect(s.reassignedShare).toBe(0);
+          expect(Object.values(s.deltas).every((d) => d === 0)).toBe(true);
+          expect(s.summary.length).toBeGreaterThan(0);
+        });
+
+        it('un couple retiré : listé, couverture en baisse ou égale', () => {
+          const s = stability(grid, before, before.slice(1));
+          expect(s.removed).toEqual([before[0].resourceId]);
+          expect(s.deltas.coverage).toBeLessThanOrEqual(0);
+          expect(s.reassignedShare).toBeGreaterThanOrEqual(0);
+          expect(s.reassignedShare).toBeLessThanOrEqual(1);
+        });
+
+        it('un couple déplacé de 1 km : compté, distance cohérente', () => {
+          const after = before.map((a, i) =>
+            i === 0
+              ? {
+                  ...a,
+                  position: {
+                    ...a.position,
+                    coordinates: [
+                      a.position.coordinates[0],
+                      a.position.coordinates[1] + 1000 / 110_574,
+                    ] as [number, number],
+                  },
+                }
+              : a,
+          );
+          const s = stability(grid, before, after);
+          expect(s.moved.map((m) => m.resourceId)).toEqual([before[0].resourceId]);
+          close(s.maxShiftM, 1000, 0.02);
+          close(s.totalShiftM, 1000, 0.02);
+        });
+
+        it("ignore les affectations d'une autre phase", () => {
+          const other = before.map((a) => ({ ...a, phase: grid.phase + 1 }));
+          const s = stability(grid, before, [
+            ...before,
+            ...other.map((a) => ({ ...a, resourceId: a.resourceId + '-x' })),
+          ]);
+          expect(s.added).toEqual([]);
+        });
       });
     }
   });

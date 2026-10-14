@@ -1,32 +1,29 @@
 import { PRIORITY_WEIGHTS, type Assignment, type Grid, type MetricsEngine } from '@aeris/shared';
-import { indexerGrille, pourChaqueCelluleAPortee, type IndexGrille } from './voisinage';
+import { presenceAuPireMoment } from './presence';
+import { indexerGrille, type IndexGrille } from './voisinage';
 
-/** Nombre de drones couvrant chaque cellule (index = cell.id). */
+/**
+ * Nombre de drones couvrant chaque cellule (index = cell.id), au pire moment de la phase :
+ * si des drones alternent par créneaux, on compte ceux présents au moment le moins couvert.
+ */
 export function coverageCounts(
   grid: Grid,
   assignments: Assignment[],
   index: IndexGrille = indexerGrille(grid),
 ): Uint16Array {
-  const counts = new Uint16Array(grid.cells.length);
-  for (const a of assignments) {
-    pourChaqueCelluleAPortee(grid, index, a.position.coordinates, a.radiusM, (cell) => {
-      counts[cell.id]++;
-    });
-  }
-  return counts;
+  return presenceAuPireMoment(grid, index, assignments);
 }
 
 export const computeMetrics: MetricsEngine = (grid, assignments, opts = {}) => {
-  const n = grid.cells.length;
   const index = indexerGrille(grid);
   const counts = coverageCounts(grid, assignments, index);
-  const served = new Uint8Array(n);
-  for (const a of assignments) {
-    pourChaqueCelluleAPortee(grid, index, a.position.coordinates, a.radiusM, (cell) => {
-      if (served[cell.id]) return;
-      if (!opts.canServe || opts.canServe(a.resourceId, cell)) served[cell.id] = 1;
-    });
-  }
+  // Servie : au moins un drone capable présent à tout instant de la phase.
+  const served = presenceAuPireMoment(
+    grid,
+    index,
+    assignments,
+    (a, cell) => !opts.canServe || opts.canServe(a.resourceId, cell),
+  );
 
   let coverable = 0;
   let covered = 0;
@@ -36,6 +33,10 @@ export const computeMetrics: MetricsEngine = (grid, assignments, opts = {}) => {
   let prioServed = 0;
   let wTotal = 0;
   let wServed = 0;
+  let useful = 0;
+  let superfluous = 0;
+  let demanding = 0;
+  let met = 0;
   for (const cell of grid.cells) {
     if (cell.forbidden) {
       forbidden++;
@@ -46,10 +47,18 @@ export const computeMetrics: MetricsEngine = (grid, assignments, opts = {}) => {
     wTotal += w;
     if (counts[cell.id] > 0) covered++;
     if (counts[cell.id] > 1) multi++;
-    if (served[cell.id]) wServed += w;
+    if (served[cell.id] > 0) wServed += w;
     if (cell.priorityLevel > 0) {
       prioTotal++;
-      if (served[cell.id]) prioServed++;
+      if (served[cell.id] > 0) prioServed++;
+    }
+    // Redondance : n drones vus au pire moment, comparés aux r voulus sur la cellule.
+    const r = cell.redundancy;
+    if (counts[cell.id] >= 2 && counts[cell.id] <= r) useful++;
+    if (counts[cell.id] > r) superfluous++;
+    if (r >= 2) {
+      demanding++;
+      if (served[cell.id] >= r) met++;
     }
   }
 
@@ -63,5 +72,8 @@ export const computeMetrics: MetricsEngine = (grid, assignments, opts = {}) => {
     uncoveredAreaM2: (coverable - covered) * area,
     forbiddenAreaM2: forbidden * area,
     communes: [], // TODO(P3) : geo.api.gouv.fr/communes?lat=&lon= sur les cellules couvertes
+    usefulOverlap: covered ? useful / covered : 0,
+    superfluousOverlap: covered ? superfluous / covered : 0,
+    redundancyMet: demanding ? met / demanding : 1,
   };
 };

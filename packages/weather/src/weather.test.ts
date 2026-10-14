@@ -42,6 +42,7 @@ const calmWeather: Weather = {
   temperatureC: 20,
   isDay: true,
   fetchedAt: '2026-10-14T10:00:00Z',
+  source: 'api',
 };
 
 describe('Critères de volabilité (flyability)', () => {
@@ -151,6 +152,8 @@ describe('Résilience fetchWeather (cache, timeout, fallback)', () => {
     expect(w.windMs).toBe(DEFAULT_OFFLINE_WEATHER.windMs);
     expect(w.isDay).toBe(DEFAULT_OFFLINE_WEATHER.isDay);
     expect(w.fetchedAt).toBeDefined();
+    // L'opérateur doit savoir que ce n'est pas une vraie mesure.
+    expect(w.source).toBe('repli');
   });
 
   it('permet de définir une météo de repli personnalisée', async () => {
@@ -162,6 +165,7 @@ describe('Résilience fetchWeather (cache, timeout, fallback)', () => {
       temperatureC: 12,
       isDay: false,
       fetchedAt: '2026-10-14T12:00:00Z',
+      source: 'api',
     };
     setWeatherFallback(customFallback);
 
@@ -227,6 +231,7 @@ describe('Résilience fetchWeather (cache, timeout, fallback)', () => {
       temperatureC: 22,
       isDay: true,
       fetchedAt: '2026-10-14T14:00:00Z',
+      source: 'api',
     };
     setWeatherFallback(custom);
     vi.stubGlobal('fetch', () => Promise.reject(new Error('Coupure réseau')));

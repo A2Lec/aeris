@@ -9,6 +9,7 @@ const calm: Weather = {
   temperatureC: 15,
   isDay: true,
   fetchedAt: '2026-10-14T10:00:00Z',
+  source: 'api',
 };
 
 /** Contrat de `excludedByWeather` : exclusions justes, toujours justifiées. */

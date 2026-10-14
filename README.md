@@ -69,15 +69,16 @@ Trois niveaux, du plus local au plus global. **Si ta suite de contrat passe, ton
 
 Chaque moteur implémente un type déclaré dans `shared`, et le déclare explicitement :
 
-| Interface                 | Implémentation                                | Propriétaire |
-| ------------------------- | --------------------------------------------- | ------------ |
-| `GridBuilder`             | `buildGrid` (`packages/geo`)                  | P3           |
-| `MetricsEngine`           | `computeMetrics` (`packages/geo`)             | P3           |
-| `CoverageGeometryBuilder` | `coverageGeometry` (`packages/geo`) → carte   | P3 → P5      |
-| `Solver`                  | `greedySolve`, `ilpSolve` (`packages/solver`) | P2           |
-| `Deconflicter`            | `deconflict` (`packages/deconflict`)          | P4           |
-| `WeatherProvider`         | `fetchWeather` (`packages/weather`)           | P4           |
-| `WeatherFilter`           | `excludedByWeather` (`packages/weather`)      | P4           |
+| Interface                 | Implémentation                                 | Propriétaire |
+| ------------------------- | ---------------------------------------------- | ------------ |
+| `GridBuilder`             | `buildGrid` (`packages/geo`)                   | P3           |
+| `MetricsEngine`           | `computeMetrics` (`packages/geo`)              | P3           |
+| `CoverageGeometryBuilder` | `coverageGeometry` (`packages/geo`) → carte    | P3 → P5      |
+| `StabilityEngine`         | `mesurerStabilite` (`packages/geo`) → recalcul | P3 → P6      |
+| `Solver`                  | `greedySolve`, `ilpSolve` (`packages/solver`)  | P2           |
+| `Deconflicter`            | `deconflict` (`packages/deconflict`)           | P4           |
+| `WeatherProvider`         | `fetchWeather` (`packages/weather`)            | P4           |
+| `WeatherFilter`           | `excludedByWeather` (`packages/weather`)       | P4           |
 
 Changer une signature casse la compilation **dans ton propre dossier**, pas chez les autres : c'est voulu. Besoin d'un paramètre de plus ? Il est probablement déjà dans le contexte (`SolveContext`, `DeconflictContext`) ; sinon, MR sur `shared` via P1.
 

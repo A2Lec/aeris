@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { drones, pilotRules } from '@aeris/data';
-import { buildGrid, computeMetrics, coverageGeometry } from '@aeris/geo';
+import { buildGrid, computeMetrics, coverageGeometry, mesurerStabilite } from '@aeris/geo';
 import { solve } from '@aeris/solver';
 import { deconflict } from '@aeris/deconflict';
 import { excludedByWeather, fetchWeather } from '@aeris/weather';
@@ -50,7 +50,20 @@ export function coverageFor(mission: Mission, phase: number, assignments: Assign
   return coverageGeometry(
     buildGrid(mission, phase),
     assignments.filter((a) => a.phase === phase),
+    { canServe: canServeFor(mission) },
   );
+}
+
+/** Écart entre le dispositif en place et un recalcul, sur une phase. */
+export function stabilityFor(
+  mission: Mission,
+  phase: number,
+  before: Assignment[],
+  after: Assignment[],
+) {
+  return mesurerStabilite(buildGrid(mission, phase), before, after, {
+    canServe: canServeFor(mission),
+  });
 }
 
 /** Grille → solveur → séparation → métriques, phase par phase. */
@@ -60,13 +73,20 @@ export async function buildProposal(
   opts: BuildOptions = {},
 ): Promise<Proposal> {
   const phases = opts.phases ?? [...Array(mission.phaseCount).keys()];
-  const excluded = opts.weather ? excludedByWeather(mission.resources, drones, opts.weather) : {};
+  // Une météo de repli n'est pas une mesure : on ne s'en sert pas pour écarter des drones.
+  const realWeather = opts.weather?.source === 'repli' ? undefined : opts.weather;
+  const excluded = realWeather ? excludedByWeather(mission.resources, drones, realWeather) : {};
   const canServe = canServeFor(mission);
   const assignments: Assignment[] = [];
   const metricsByPhase: Metrics[] = [];
   const diagnostics: string[] = [];
   let status: SolveStatus = 'optimal';
   let previous = opts.previous;
+  if (opts.weather?.source === 'repli') {
+    diagnostics.push(
+      'Météo indisponible : calcul sans contrainte météo, à vérifier avant engagement',
+    );
+  }
 
   for (const phase of phases) {
     const grid = buildGrid(mission, phase);
