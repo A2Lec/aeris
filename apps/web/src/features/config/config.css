@@ -109,24 +109,15 @@
   flex-basis: 100%;
 }
 
-/* Période de l'intervention et créneau de chaque phase. */
-.period-inputs {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 8px;
-}
-.period-inputs label {
+/* Horaires : début de l'intervention, puis durée, jour/nuit et créneau de chaque phase. */
+.period-start {
   display: flex;
   flex-direction: column;
   align-items: stretch;
   gap: 4px;
   margin: 0;
-  font-weight: 400;
-  color: var(--text-2);
-  font-size: 12px;
 }
-.wizard-body .period-inputs input {
-  width: 100%;
+.wizard-body .period input {
   min-width: 0;
   padding: 6px 8px;
   border: 1px solid var(--border);
@@ -147,8 +138,8 @@
   display: grid;
   grid-template-columns: auto 1fr auto;
   align-items: center;
-  gap: 10px;
-  padding: 6px 10px;
+  gap: 4px 10px;
+  padding: 7px 10px;
   border-bottom: 1px solid var(--border);
   font-weight: 400;
 }
@@ -157,6 +148,24 @@
 }
 .phase-slots b {
   font-weight: 600;
+}
+.phase-duration {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.wizard-body .phase-duration input {
+  width: 52px;
+  padding: 4px 6px;
+  text-align: right;
+}
+.phase-duration small,
+.phase-time {
+  color: var(--text-2);
+  font-size: 12px;
+}
+.phase-time {
+  grid-column: 2 / -1;
 }
 .pill.day {
   background: var(--warn-bg);

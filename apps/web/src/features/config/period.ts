@@ -48,7 +48,7 @@ export interface PhaseSlot {
 
 /** Créneau et jour/nuit de chaque phase ; vide sans période valide. */
 export function phaseSlots(
-  mission: Pick<Mission, 'period' | 'phaseCount'>,
+  mission: Pick<Mission, 'period' | 'phaseCount'> & Partial<Pick<Mission, 'phaseDurationsMin'>>,
   lat: number,
   lng: number,
 ): PhaseSlot[] {
@@ -69,4 +69,49 @@ export function formatSlotTime(iso: string, ref?: string): string {
     hour: '2-digit',
     minute: '2-digit',
   });
+}
+
+/** Durée proposée pour une nouvelle phase, en minutes. */
+export const DEFAULT_PHASE_MIN = 240;
+
+/** Durée de chaque phase en minutes : celles choisies, sinon le découpage égal de la période. */
+export function phaseDurations(
+  mission: Pick<Mission, 'period' | 'phaseCount'> & Partial<Pick<Mission, 'phaseDurationsMin'>>,
+): number[] {
+  const n = mission.phaseCount;
+  if (mission.phaseDurationsMin?.length === n) return mission.phaseDurationsMin;
+  if (!mission.period) return Array(n).fill(DEFAULT_PHASE_MIN);
+  const total = (Date.parse(mission.period.end) - Date.parse(mission.period.start)) / 60_000;
+  return Number.isFinite(total) && total > 0
+    ? Array(n).fill(Math.round(total / n))
+    : Array(n).fill(DEFAULT_PHASE_MIN);
+}
+
+/** Durées ajustées à un nouveau nombre de phases : on garde les premières, on complète. */
+export function resizeDurations(durations: number[], count: number): number[] {
+  const last = durations.at(-1) ?? DEFAULT_PHASE_MIN;
+  return [...durations.slice(0, count), ...Array(Math.max(0, count - durations.length)).fill(last)];
+}
+
+/** Période et durées enregistrées : la fin de l'intervention suit la somme des phases. */
+export function withSchedule(
+  startIso: string,
+  durations: number[],
+): Pick<Mission, 'period' | 'phaseDurationsMin'> {
+  const total = durations.reduce((s, d) => s + d, 0);
+  return {
+    period: {
+      start: startIso,
+      end: new Date(Date.parse(startIso) + total * 60_000).toISOString(),
+    },
+    phaseDurationsMin: durations,
+  };
+}
+
+/** « 4 h », « 1 h 30 », « 45 min ». */
+export function formatDuration(min: number): string {
+  const h = Math.floor(min / 60);
+  const m = Math.round(min % 60);
+  if (!h) return `${m} min`;
+  return m ? `${h} h ${String(m).padStart(2, '0')}` : `${h} h`;
 }

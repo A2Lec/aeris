@@ -36,18 +36,27 @@ export function meetsRequirement(model: DroneModel, req: Requirement): boolean {
 }
 
 /**
- * Créneau horaire d'une phase : la période de l'arrêté découpée en `phaseCount` parts égales.
- * `undefined` si la mission n'a pas de période valide : ne JAMAIS inventer de date.
- * Sert à la séparation temporelle (créneaux) et à la météo par phase.
+ * Créneau horaire d'une phase : la durée choisie pour chaque phase (`phaseDurationsMin`),
+ * enchaînées depuis le début de la période ; à défaut, la période découpée en `phaseCount`
+ * parts égales. `undefined` si la mission n'a pas de période valide : ne JAMAIS inventer de
+ * date. Sert à la séparation temporelle (créneaux) et à la météo par phase.
  */
 export function phaseWindow(
-  mission: Pick<Mission, 'period' | 'phaseCount'>,
+  mission: Pick<Mission, 'period' | 'phaseCount'> & Partial<Pick<Mission, 'phaseDurationsMin'>>,
   phase: number,
 ): { start: string; end: string } | undefined {
   if (!mission.period) return undefined;
   const start = Date.parse(mission.period.start);
   const end = Date.parse(mission.period.end);
   if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return undefined;
+  const durations = mission.phaseDurationsMin;
+  if (durations?.length === mission.phaseCount && durations.every((d) => d > 0)) {
+    const offset = durations.slice(0, phase).reduce((s, d) => s + d, 0) * 60_000;
+    return {
+      start: new Date(start + offset).toISOString(),
+      end: new Date(start + offset + (durations[phase] ?? 0) * 60_000).toISOString(),
+    };
+  }
   const step = (end - start) / Math.max(1, mission.phaseCount);
   return {
     start: new Date(start + phase * step).toISOString(),
