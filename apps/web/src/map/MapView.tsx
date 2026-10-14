@@ -1,5 +1,5 @@
-import type { ReactNode } from 'react';
-import { MapContainer, TileLayer } from 'react-leaflet';
+import { useEffect, type ReactNode } from 'react';
+import { MapContainer, TileLayer, useMap } from 'react-leaflet';
 import '@geoman-io/leaflet-geoman-free';
 import '@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css';
 import { BASEMAPS, useBasemapStore } from './basemap';
@@ -16,7 +16,19 @@ export function MapView({ children }: { children?: ReactNode }) {
         attribution={basemap.attribution}
         maxZoom={19}
       />
+      <FollowContainerSize />
       {children}
     </MapContainer>
   );
+}
+
+/** Les panneaux latéraux apparaissent ou disparaissent selon l'étape : la carte suit sa taille. */
+function FollowContainerSize() {
+  const map = useMap();
+  useEffect(() => {
+    const observer = new ResizeObserver(() => map.invalidateSize());
+    observer.observe(map.getContainer());
+    return () => observer.disconnect();
+  }, [map]);
+  return null;
 }

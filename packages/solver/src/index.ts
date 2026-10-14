@@ -5,3 +5,11 @@ export { greedySolve } from './greedy';
 
 /** Point d'entrée utilisé par l'API : recuit simulé (le solveur exact HiGHS a été retiré). */
 export const solve: Solver = greedySolve;
+export {
+  SIZING_PREFIX,
+  needsSizing,
+  sizeFleet,
+  type SizingInput,
+  type SizingResult,
+  type SizingTrial,
+} from './sizing';

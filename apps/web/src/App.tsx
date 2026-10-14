@@ -6,6 +6,7 @@ import { Topbar } from './components/Topbar';
 import { Legend } from './components/Legend';
 import { Welcome, useStartStore } from './components/Welcome';
 import { ConfigPanel } from './features/config/ConfigPanel';
+import { PlaceLayer } from './features/config/PlaceLayer';
 import { ScenariosPanel } from './features/scenarios/ScenariosPanel';
 import { ScenarioLayers } from './features/scenarios/ScenarioLayers';
 import { useScenarioStore } from './features/scenarios/store';
@@ -13,11 +14,13 @@ import { LiveLeft } from './features/live/LiveLeft';
 import { LiveRight } from './features/live/LiveRight';
 import { LiveLayers } from './features/live/LiveLayers';
 import { useLiveStore } from './features/live/store';
+import { ResumeWizard, useResumeStore } from './features/live/ResumeWizard';
 import './theme';
 
 /**
- * Assemblage uniquement : bandeau, panneau gauche, carte, panneau droit. En Propositions,
- * la carte prend toute la largeur et les fenêtres de l'étape sont posées dessus.
+ * Assemblage uniquement : bandeau, panneau gauche, carte, panneau droit. En préparation
+ * (planification ou reprise d'un projet) et en Propositions, la carte prend toute la largeur
+ * et les fenêtres de l'étape sont posées dessus.
  * Chaque bloc vit dans sa fonctionnalité (features/<nom>) ou dans components/.
  */
 export function App() {
@@ -25,11 +28,12 @@ export function App() {
   const mode = useStartStore((s) => s.mode);
   const { phase, selectedId, minimized } = useScenarioStore();
   const live = useLiveStore((s) => s.live);
+  const resuming = useResumeStore((s) => !!s.project);
   const status = state?.status ?? 'config';
   const preparing = status === 'config' || status === 'phasage';
   // Propositions : carte pleine largeur, fenêtres posées dessus (assombrie tant qu'elles sont ouvertes).
   const proposing = status === 'propositions';
-  const layout = proposing ? 'no-sides' : preparing ? 'no-right' : '';
+  const layout = proposing || preparing ? 'no-sides' : '';
 
   // Communes concernées : métriques de la phase affichée (proposition ou conduite).
   const selected = state?.proposals.find((p) => p.id === selectedId) ?? state?.proposals[0];
@@ -47,14 +51,9 @@ export function App() {
     <div className={`app ${layout}`}>
       <Topbar />
 
-      {!proposing && (
+      {status === 'conduite' && (
         <aside className="side side-left" aria-label="Panneau de travail">
-          {preparing && (
-            <div className="side-scroll">
-              <ConfigPanel />
-            </div>
-          )}
-          {status === 'conduite' && <LiveLeft />}
+          <LiveLeft />
         </aside>
       )}
 
@@ -67,12 +66,14 @@ export function App() {
             />
           )}
           {!state && <MissionSetupLayer />}
+          {!state && <PlaceLayer />}
           {status === 'propositions' && <ScenarioLayers />}
           {status === 'conduite' && <LiveLayers />}
         </MapView>
+        {preparing && (resuming ? <ResumeWizard /> : <ConfigPanel />)}
         {proposing && <ScenariosPanel />}
-        {state && !(proposing && !minimized) && (
-          <Legend withCoverage={!preparing} communes={communes} pilots={state.mission.pilots} />
+        {state && !preparing && !(proposing && !minimized) && (
+          <Legend withCoverage communes={communes} pilots={state.mission.pilots} />
         )}
         {error && (
           <p className="toast" role="alert">

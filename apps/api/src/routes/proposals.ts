@@ -2,7 +2,13 @@ import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { ProposalEditRequest, SolveRequest } from '@aeris/shared';
 import { HttpError, getOr404, publishLive } from '../store';
-import { buildProposal, coverageFor, metricsFor, tryWeather } from '../services/pipeline';
+import {
+  buildProposal,
+  coverageFor,
+  metricsFor,
+  sizeMission,
+  tryWeather,
+} from '../services/pipeline';
 
 type IdParams = { Params: { id: string } };
 type PidParams = { Params: { id: string; pid: string } };
@@ -14,9 +20,13 @@ const plugin: FastifyPluginAsync = async (app) => {
     if (st.status === 'conduite') throw new HttpError(409, 'Opération en cours');
     const body = SolveRequest.parse(req.body ?? {});
     const weather = body.useWeather ? await tryWeather(st.mission) : undefined;
+    // Planification sans moyens : la flotte est d'abord dimensionnée par le solveur.
+    const sizing = sizeMission(st.mission, weather);
+    st.mission = sizing.mission;
     const proposals = await Promise.all(
       body.strategies.map((s) => buildProposal(st.mission, s, { weather })),
     );
+    for (const p of proposals) p.diagnostics = [...sizing.diagnostics, ...p.diagnostics];
     st.proposals = [...st.proposals, ...proposals];
     st.status = 'propositions';
     return proposals;
