@@ -3,6 +3,7 @@ import { api } from '../../api/client';
 import { useMissionStore } from '../../app/missionStore';
 import { CoupleCard } from '../../components/CoupleCard';
 import { useFocusStore } from '../../components/focus';
+import { resourceLabel } from '../resourceLabel';
 import { describeEvent } from './events';
 import { useLiveStore } from './store';
 import { useLiveSocket } from './useLiveSocket';
@@ -59,7 +60,7 @@ export function LiveLeft() {
           <ul className="list reserve">
             {others.map((r) => (
               <li key={r.id}>
-                <b>{r.id}</b> {mission.pilots.find((p) => p.id === r.pilotId)?.name}
+                <b title={r.id}>{resourceLabel(mission, r.id, catalog)}</b>
                 {r.available ? (
                   <span className="pill">En réserve</span>
                 ) : (

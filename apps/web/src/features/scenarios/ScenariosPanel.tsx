@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { api } from '../../api/client';
 import { useMissionStore } from '../../app/missionStore';
+import { resourceLabel } from '../resourceLabel';
 import { KpiGrid } from '../../components/KpiGrid';
 import { SeparationCard } from '../../components/SeparationCard';
 import { useFocusStore } from '../../components/focus';
@@ -20,7 +21,7 @@ import './scenarios.css';
  * réduites, la carte repasse au premier plan pour déplacer les pilotes.
  */
 export function ScenariosPanel() {
-  const { setState, run, busy } = useMissionStore();
+  const { setState, run, busy, catalog } = useMissionStore();
   const { select, minimized, setMinimized, clearDraft } = useScenarioStore();
   const { focusId, focus } = useFocusStore();
   const { state, proposals, selected, phase, moves, pending, inPhase } = useSelection();
@@ -133,18 +134,14 @@ export function ScenariosPanel() {
               ) : (
                 <ul className="couples-list">
                   {inPhase.map((a) => {
-                    const res = mission.resources.find((r) => r.id === a.resourceId);
-                    const pilot = mission.pilots.find((p) => p.id === res?.pilotId);
                     const moved = moves[moveKey(a.resourceId, a.phase)] !== undefined;
                     return (
                       <li key={a.resourceId} className={focusId === a.resourceId ? 'focused' : ''}>
                         <div>
-                          <b>{a.resourceId}</b> {pilot?.name}
-                          {pilot && (
-                            <span className={`pill ${pilot.level === 'TP1' ? 'ok' : 'info'}`}>
-                              {pilot.level}, {a.radiusM / 1000} km
-                            </span>
-                          )}
+                          <b title={a.resourceId}>
+                            {resourceLabel(mission, a.resourceId, catalog)}
+                          </b>
+                          <span className="pill">{a.radiusM / 1000} km</span>
                           {moved && <span className="pill warn">Déplacé</span>}
                           <small>
                             {a.altitude.minM} à {a.altitude.maxM} m,{' '}

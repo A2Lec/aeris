@@ -12,6 +12,7 @@ interface MissionStore {
   error?: string;
   busy: boolean;
   setState: (s: MissionState) => void;
+  setCatalog: (catalog: Catalog) => void;
   refresh: () => Promise<void>;
   /** Exécute une action API avec gestion du chargement et des erreurs. */
   run: <T>(fn: () => Promise<T>) => Promise<T | undefined>;
@@ -20,6 +21,7 @@ interface MissionStore {
 export const useMissionStore = create<MissionStore>((set, get) => ({
   busy: false,
   setState: (state) => set({ state }),
+  setCatalog: (catalog) => set({ catalog }),
   refresh: async () => {
     const id = get().state?.mission.id;
     if (id) set({ state: await api.getMission(id) });

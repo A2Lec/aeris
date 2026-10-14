@@ -2,8 +2,16 @@ import type { MissionInput } from '@aeris/shared';
 import { useState } from 'react';
 import { api } from '../../api/client';
 import { useMissionStore } from '../../app/missionStore';
+import { resourceLabel } from '../resourceLabel';
 import { useConfigEditorStore } from './store';
 import './config.css';
+
+interface DroneDisplaySettings {
+  maxWindMs: number;
+  night: boolean;
+  rainOk: boolean;
+  zoomX: number;
+}
 
 /**
  * Étapes « Configuration » et « Phasage ».
@@ -15,6 +23,9 @@ export function ConfigPanel() {
   const editor = useConfigEditorStore();
   const [pilotName, setPilotName] = useState('');
   const [pilotLevel, setPilotLevel] = useState<'TP1' | 'TP2'>('TP1');
+  const [droneSettings, setDroneSettings] = useState<Record<string, DroneDisplaySettings>>({});
+  const [settingsResourceId, setSettingsResourceId] = useState<string>();
+  const [settingsDraft, setSettingsDraft] = useState<DroneDisplaySettings>();
   const activateDraw = (mode: Parameters<typeof editor.setDrawMode>[0]) => {
     editor.setEditing(false);
     editor.setDrawMode(editor.drawMode === mode ? 'idle' : mode);
@@ -206,6 +217,19 @@ export function ConfigPanel() {
     });
   };
   const modelName = (id: string) => catalog?.drones.find((d) => d.id === id)?.name ?? id;
+  const openDroneSettings = (resourceId: string, modelId: string) => {
+    const model = catalog?.drones.find((drone) => drone.id === modelId);
+    if (!model) return;
+    setSettingsResourceId(resourceId);
+    setSettingsDraft(
+      droneSettings[resourceId] ?? {
+        maxWindMs: model.maxWindMs,
+        night: model.night,
+        rainOk: model.rainOk,
+        zoomX: model.zoomX,
+      },
+    );
+  };
 
   return (
     <section>
@@ -362,21 +386,38 @@ export function ConfigPanel() {
                 {pilot.name} ({pilot.level}) — {selectedDroneNames || 'Aucun drone sélectionné'}
               </summary>
               <div className="pilot-drone-options">
-                {catalog?.drones.map((drone) => (
-                  <label className="pilot-drone-option" key={drone.id}>
-                    <input
-                      type="checkbox"
-                      checked={pilotResources.some(
-                        (resource) => resource.droneModelId === drone.id,
+                {catalog?.drones.map((drone) => {
+                  const resource = pilotResources.find((item) => item.droneModelId === drone.id);
+                  return (
+                    <div className="pilot-drone-option" key={drone.id}>
+                      <label>
+                        <input
+                          type="checkbox"
+                          checked={!!resource}
+                          disabled={busy}
+                          onChange={(event) =>
+                            togglePilotDrone(pilot.id, drone.id, event.currentTarget.checked)
+                          }
+                        />
+                        {drone.name}
+                      </label>
+                      {resource && (
+                        <>
+                          <button
+                            className="small"
+                            type="button"
+                            onClick={() => openDroneSettings(resource.id, drone.id)}
+                          >
+                            Paramètres
+                          </button>
+                          {droneSettings[resource.id] && (
+                            <span className="drone-settings-saved">Réglages saisis</span>
+                          )}
+                        </>
                       )}
-                      disabled={busy}
-                      onChange={(event) =>
-                        togglePilotDrone(pilot.id, drone.id, event.currentTarget.checked)
-                      }
-                    />
-                    {drone.name}
-                  </label>
-                ))}
+                    </div>
+                  );
+                })}
               </div>
             </details>
           );
@@ -406,10 +447,9 @@ export function ConfigPanel() {
       </ul>
       <ul className="list">
         {mission.resources.map((r) => {
-          const p = mission.pilots.find((x) => x.id === r.pilotId);
           return (
             <li key={r.id}>
-              <b>{r.id}</b> {p?.name} ({p?.level}) — {modelName(r.droneModelId)}
+              <b title={r.id}>{resourceLabel(mission, r.id, catalog)}</b>
               <label className="resource-availability">
                 <input
                   type="checkbox"
@@ -481,7 +521,7 @@ export function ConfigPanel() {
               >
                 {mission.resources.map((resource) => (
                   <option key={resource.id} value={resource.id}>
-                    {resource.id}
+                    {resourceLabel(mission, resource.id, catalog)}
                   </option>
                 ))}
               </select>
@@ -499,6 +539,100 @@ export function ConfigPanel() {
           </li>
         )}
       </ul>
+
+      {settingsResourceId && settingsDraft && (
+        <div className="drone-settings-backdrop">
+          <section
+            className="drone-settings-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="drone-settings-title"
+          >
+            <h3 id="drone-settings-title">
+              Paramètres — {resourceLabel(mission, settingsResourceId, catalog)}
+            </h3>
+            <p className="config-help">
+              Ces réglages sont temporaires et ne sont pas encore pris en compte dans le calcul des
+              placements.
+            </p>
+            <label>
+              Résistance au vent (m/s max.)
+              <input
+                type="number"
+                min={0}
+                step={0.5}
+                value={settingsDraft.maxWindMs}
+                onChange={(event) =>
+                  setSettingsDraft({ ...settingsDraft, maxWindMs: Number(event.target.value) })
+                }
+              />
+            </label>
+            <label className="drone-setting-toggle">
+              <input
+                type="checkbox"
+                checked={settingsDraft.night}
+                onChange={(event) =>
+                  setSettingsDraft({ ...settingsDraft, night: event.currentTarget.checked })
+                }
+              />
+              Vision nocturne
+            </label>
+            <label className="drone-setting-toggle">
+              <input
+                type="checkbox"
+                checked={settingsDraft.rainOk}
+                onChange={(event) =>
+                  setSettingsDraft({ ...settingsDraft, rainOk: event.currentTarget.checked })
+                }
+              />
+              Résistance à la pluie
+            </label>
+            <label>
+              Zoom optique (×)
+              <input
+                type="number"
+                min={0}
+                step={1}
+                value={settingsDraft.zoomX}
+                onChange={(event) =>
+                  setSettingsDraft({ ...settingsDraft, zoomX: Number(event.target.value) })
+                }
+              />
+            </label>
+            <div className="drone-settings-actions">
+              <button
+                type="button"
+                onClick={() => {
+                  setSettingsResourceId(undefined);
+                  setSettingsDraft(undefined);
+                }}
+              >
+                Annuler
+              </button>
+              <button
+                className="primary"
+                type="button"
+                disabled={
+                  !Number.isFinite(settingsDraft.maxWindMs) ||
+                  settingsDraft.maxWindMs < 0 ||
+                  !Number.isFinite(settingsDraft.zoomX) ||
+                  settingsDraft.zoomX < 0
+                }
+                onClick={() => {
+                  setDroneSettings((current) => ({
+                    ...current,
+                    [settingsResourceId]: settingsDraft,
+                  }));
+                  setSettingsResourceId(undefined);
+                  setSettingsDraft(undefined);
+                }}
+              >
+                Enregistrer
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
 
       <h3>{status === 'phasage' ? 'Affectation aux phases' : 'Zones prioritaires'}</h3>
       {status === 'phasage' && (

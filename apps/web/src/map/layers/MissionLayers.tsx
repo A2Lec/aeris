@@ -5,6 +5,7 @@ import type { GeoJsonObject } from 'geojson';
 import { AreaGeom, type Mission, type MissionInput } from '@aeris/shared';
 import { api } from '../../api/client';
 import { useMissionStore } from '../../app/missionStore';
+import { resourceLabel } from '../../features/resourceLabel';
 import { useConfigEditorStore } from '../../features/config/store';
 import {
   CONSTRAINT_COLORS,
@@ -25,6 +26,7 @@ function areaFromLayer(layer: L.Layer) {
 /** Zone de travail, zones prioritaires (actives pour la phase) et zones contraintes. */
 export function MissionLayers({ mission, phase }: { mission: Mission; phase?: number }) {
   const map = useMap();
+  const catalog = useMissionStore((state) => state.catalog);
   const drawMode = useConfigEditorStore((s) => s.drawMode);
   const editing = useConfigEditorStore((s) => s.editing);
   const setDrawMode = useConfigEditorStore((s) => s.setDrawMode);
@@ -208,7 +210,9 @@ export function MissionLayers({ mission, phase }: { mission: Mission; phase?: nu
                 fillOpacity: 0.08,
               }}
               onEachFeature={(_, layer) => {
-                layer.bindTooltip(`Zone limite — ${resource.id}`);
+                const tooltip = document.createElement('span');
+                tooltip.textContent = `Zone limite — ${resourceLabel(mission, resource.id, catalog)}`;
+                layer.bindTooltip(tooltip);
                 editLayer('resourceArea', layer, resource.id);
               }}
             />

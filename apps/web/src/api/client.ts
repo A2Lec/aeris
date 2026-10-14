@@ -8,6 +8,7 @@ import {
   type MissionInput,
   type MissionState,
   type MissionStatus,
+  type NewDroneModel,
   type Proposal,
   type Strategy,
 } from '@aeris/shared';
@@ -29,6 +30,8 @@ async function http<T>(method: string, url: string, body?: unknown): Promise<T> 
 /** Client typé de l'API : une méthode par route (voir API dans @aeris/shared). */
 const httpApi = {
   catalog: () => http<Catalog>('GET', API.catalog),
+  addDrone: (drone: NewDroneModel) =>
+    http<Catalog['drones'][number]>('POST', API.catalogDrones, drone),
   demoMission: () => http<MissionInput>('GET', API.demoMission),
   createMission: (input: MissionInput) => http<MissionState>('POST', API.missions, input),
   getMission: (id: string) => http<MissionState>('GET', API.mission(id)),

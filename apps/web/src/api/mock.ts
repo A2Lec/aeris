@@ -9,6 +9,7 @@ import type {
   LiveState,
   MissionInput,
   MissionState,
+  NewDroneModel,
   Proposal,
 } from '@aeris/shared';
 import snapshot from './mocks/snapshot.json';
@@ -28,7 +29,22 @@ const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
 const delay = <T>(v: T): Promise<T> => new Promise((r) => setTimeout(() => r(clone(v)), 150));
 
 let state: MissionState = clone(snap.created);
+let catalog = clone(snap.catalog);
 const listeners = new Set<(live: LiveState) => void>();
+
+function mockDroneId(name: string): string {
+  const base =
+    name
+      .normalize('NFD')
+      .replace(/\p{Diacritic}/gu, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '') || 'drone';
+  let id = base;
+  for (let suffix = 2; catalog.drones.some((drone) => drone.id === id); suffix++)
+    id = `${base}-${suffix}`;
+  return id;
+}
 
 function liveOrThrow(): LiveState {
   if (state.status !== 'conduite' || !state.live) throw new Error('Aucune opération en cours');
@@ -47,7 +63,18 @@ export function subscribeMockLive(cb: (live: LiveState) => void): () => void {
 }
 
 export const mockApi: Api = {
-  catalog: () => delay(snap.catalog),
+  catalog: () => delay(catalog),
+  addDrone: (input: NewDroneModel) => {
+    const drone = {
+      ...clone(input),
+      id: mockDroneId(input.name),
+      enduranceMin: 30,
+      minTempC: -10,
+      maxTempC: 40,
+    };
+    catalog = { ...catalog, drones: [...catalog.drones, drone] };
+    return delay(drone);
+  },
   demoMission: () => delay(snap.demoMission),
   createMission: (input) => {
     state = {

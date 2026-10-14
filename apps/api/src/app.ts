@@ -4,6 +4,7 @@ import websocket from '@fastify/websocket';
 import { readdir } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { initializeDroneCatalog } from './catalogStore';
 
 /** Construit l'application sans l'écouter (utilisé par server.ts et les tests). */
 export async function buildApp(opts: FastifyServerOptions = {}) {
@@ -22,6 +23,8 @@ export async function buildApp(opts: FastifyServerOptions = {}) {
       .code(status)
       .send({ message: error instanceof Error ? error.message : String(error) });
   });
+
+  await initializeDroneCatalog();
 
   // Chaque fichier de routes/ est un plugin Fastify chargé automatiquement :
   // ajouter une route = ajouter un fichier, sans toucher à ce fichier-ci.
