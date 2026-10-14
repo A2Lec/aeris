@@ -77,6 +77,9 @@ describe('Scénario de démo complet', () => {
     ]);
     for (const p of proposals) {
       expect(p.metricsByPhase).toHaveLength(input.phaseCount);
+      // Démo autour de Bouconne : communes connues, une entrée par zone prioritaire active.
+      expect(p.metricsByPhase[0].communes.length).toBeGreaterThan(0);
+      expect(p.metricsByPhase[0].byZone?.length).toBeGreaterThan(0);
       expect(p.assignments.every((a) => a.phase < input.phaseCount)).toBe(true);
       expect(p.status).not.toBe('infaisable');
     }
@@ -89,6 +92,7 @@ describe('Scénario de démo complet', () => {
       const layers = await call(CoverageLayers, 'GET', API.coverage(id, proposals[0].id, phase));
       expect(layers.phase).toBe(phase);
       expect(layers.covered.coordinates.length).toBeGreaterThan(0);
+      expect(layers.byResource?.length).toBeGreaterThan(0);
     }
   });
 

@@ -7,7 +7,7 @@
  * Règle purement géographique : elle ne tient pas compte des créneaux (deux drones qui se
  * relaient au même endroit se partagent la zone selon la distance, pas selon l'heure).
  */
-import type { Assignment, Grid, MultiPolygonGeom } from '@aeris/shared';
+import type { Assignment, Grid, ResourceCoverage } from '@aeris/shared';
 import { fusionner } from './coverage';
 import { distanceM } from './distance';
 import { indexerGrille, pourChaqueCelluleAPortee, type IndexGrille } from './voisinage';
@@ -40,11 +40,7 @@ export function responsables(
 }
 
 /** Surface dont un couple est responsable. */
-export interface CouverturePropre {
-  resourceId: string;
-  geometry: MultiPolygonGeom;
-  areaM2: number;
-}
+export type CouverturePropre = ResourceCoverage;
 
 /** Une surface par couple engagé dans la phase, dans l'ordre des affectations. */
 export function couchesParCouple(grid: Grid, assignments: Assignment[]): CouverturePropre[] {
