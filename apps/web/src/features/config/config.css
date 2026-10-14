@@ -48,6 +48,35 @@ select {
   font-size: 12px;
 }
 
+.pilot-drone-picker {
+  border-top: 1px solid var(--line);
+  padding-top: 6px;
+}
+
+.pilot-drone-picker summary {
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.pilot-drone-options {
+  display: grid;
+  gap: 4px;
+  padding: 6px 0 0 16px;
+}
+
+.pilot-drone-option {
+  display: inline-flex;
+  justify-content: flex-start;
+  gap: 6px;
+  width: auto;
+  margin: 0;
+  font-size: 12px;
+}
+
+.pilot-drone-option input {
+  margin: 0;
+}
+
 .resource-availability {
   display: inline-flex;
   justify-content: flex-start;

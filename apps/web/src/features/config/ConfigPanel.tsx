@@ -15,8 +15,6 @@ export function ConfigPanel() {
   const editor = useConfigEditorStore();
   const [pilotName, setPilotName] = useState('');
   const [pilotLevel, setPilotLevel] = useState<'TP1' | 'TP2'>('TP1');
-  const [droneModelId, setDroneModelId] = useState('');
-  const [selectedPilotId, setSelectedPilotId] = useState('');
   const activateDraw = (mode: Parameters<typeof editor.setDrawMode>[0]) => {
     editor.setEditing(false);
     editor.setDrawMode(editor.drawMode === mode ? 'idle' : mode);
@@ -157,34 +155,33 @@ export function ConfigPanel() {
         pilots: [...mission.pilots, { id: pilotId, name, level: pilotLevel }],
       });
       setState(updated);
-      setSelectedPilotId(pilotId);
     });
     setPilotName('');
   };
-  const addPilotDrone = () => {
-    const modelId = droneModelId || catalog?.drones[0]?.id;
-    if (
-      !selectedPilotId ||
-      !mission.pilots.some((pilot) => pilot.id === selectedPilotId) ||
-      !modelId ||
-      !catalog?.drones.some((drone) => drone.id === modelId) ||
-      mission.resources.some(
-        (resource) => resource.pilotId === selectedPilotId && resource.droneModelId === modelId,
-      )
-    )
+  const togglePilotDrone = (pilotId: string, droneModelId: string, checked: boolean) => {
+    const existingResource = mission.resources.find(
+      (resource) => resource.pilotId === pilotId && resource.droneModelId === droneModelId,
+    );
+    if (checked) {
+      if (existingResource) return;
+      void update({
+        resources: [
+          ...mission.resources,
+          {
+            id: `r-${crypto.randomUUID().slice(0, 8)}`,
+            pilotId,
+            droneModelId,
+            available: true,
+          },
+        ],
+      });
       return;
+    }
 
-    void update({
-      resources: [
-        ...mission.resources,
-        {
-          id: `r-${crypto.randomUUID().slice(0, 8)}`,
-          pilotId: selectedPilotId,
-          droneModelId: modelId,
-          available: true,
-        },
-      ],
-    });
+    if (existingResource)
+      void update({
+        resources: mission.resources.filter((resource) => resource.id !== existingResource.id),
+      });
   };
   const activePhases = (zone: (typeof mission.priorityZones)[number]) =>
     zone.phases?.length
@@ -350,50 +347,40 @@ export function ConfigPanel() {
         </button>
       </div>
       <div className="config-resource-form">
-        <strong>2. Choisir les drones pilotables</strong>
-        <label>
-          Télépilote
-          <select
-            value={selectedPilotId || mission.pilots[0]?.id || ''}
-            onChange={(event) => setSelectedPilotId(event.target.value)}
-            disabled={!mission.pilots.length}
-          >
-            {mission.pilots.map((pilot) => (
-              <option key={pilot.id} value={pilot.id}>
-                {pilot.name} ({pilot.level})
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Drone pilotable
-          <select
-            value={droneModelId || catalog?.drones[0]?.id || ''}
-            onChange={(event) => setDroneModelId(event.target.value)}
-            disabled={!catalog?.drones.length}
-          >
-            {catalog?.drones.map((drone) => (
-              <option key={drone.id} value={drone.id}>
-                {drone.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <button
-          onClick={addPilotDrone}
-          disabled={
-            busy ||
-            !mission.pilots.length ||
-            !catalog?.drones.length ||
-            mission.resources.some(
-              (resource) =>
-                resource.pilotId === (selectedPilotId || mission.pilots[0]?.id) &&
-                resource.droneModelId === (droneModelId || catalog?.drones[0]?.id),
-            )
-          }
-        >
-          Associer ce drone au pilote
-        </button>
+        <strong>2. Choisir les drones pilotables pour chaque télépilote</strong>
+        {!mission.pilots.length && <p className="config-help">Ajoutez d’abord un télépilote.</p>}
+        {mission.pilots.map((pilot) => {
+          const pilotResources = mission.resources.filter(
+            (resource) => resource.pilotId === pilot.id,
+          );
+          const selectedDroneNames = pilotResources
+            .map((resource) => modelName(resource.droneModelId))
+            .join(', ');
+          return (
+            <details className="pilot-drone-picker" key={pilot.id}>
+              <summary>
+                {pilot.name} ({pilot.level}) — {selectedDroneNames || 'Aucun drone sélectionné'}
+              </summary>
+              <div className="pilot-drone-options">
+                {catalog?.drones.map((drone) => (
+                  <label className="pilot-drone-option" key={drone.id}>
+                    <input
+                      type="checkbox"
+                      checked={pilotResources.some(
+                        (resource) => resource.droneModelId === drone.id,
+                      )}
+                      disabled={busy}
+                      onChange={(event) =>
+                        togglePilotDrone(pilot.id, drone.id, event.currentTarget.checked)
+                      }
+                    />
+                    {drone.name}
+                  </label>
+                ))}
+              </div>
+            </details>
+          );
+        })}
       </div>
       <h4>Télépilotes</h4>
       <ul className="list">
@@ -406,7 +393,6 @@ export function ConfigPanel() {
                 className="small"
                 onClick={() => {
                   void update({ pilots: mission.pilots.filter((item) => item.id !== pilot.id) });
-                  if (selectedPilotId === pilot.id) setSelectedPilotId('');
                 }}
                 disabled={busy || hasResources}
                 aria-label={`Supprimer le télépilote ${pilot.name}`}
