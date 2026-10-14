@@ -1,38 +1,81 @@
 import type { CoverageGeometryBuilder, Grid, LngLat, MultiPolygonGeom } from '@aeris/shared';
-import { M_PER_DEG_LAT, metersPerDegLng } from './distance';
 import { coverageCounts } from './metrics';
+import { indexerGrille, type IndexGrille } from './voisinage';
 
-/** Carré de la cellule (anneau fermé, sens trigonométrique). */
-function cellSquare(grid: Grid, center: [number, number]): LngLat[][] {
-  const [lng, lat] = center;
-  const hx = grid.cellSizeM / 2 / metersPerDegLng(lat);
-  const hy = grid.cellSizeM / 2 / M_PER_DEG_LAT;
-  return [
-    [
-      [lng - hx, lat - hy],
-      [lng + hx, lat - hy],
-      [lng + hx, lat + hy],
-      [lng - hx, lat + hy],
-      [lng - hx, lat - hy],
-    ],
-  ];
+/** Rectangle de cellules, bornes incluses. */
+interface Bloc {
+  ligne0: number;
+  ligne1: number;
+  col0: number;
+  col1: number;
 }
 
 /**
- * v0 : un carré par cellule (exact au pas de la grille, cohérent avec computeMetrics).
- * TODO(P3) : fusionner les carrés (turf.union / dissolve) pour alléger la carte.
+ * Regroupe les cellules retenues en rectangles : d'abord les suites de cellules voisines sur
+ * une même ligne, puis on prolonge vers le nord un rectangle dont la ligne suivante a
+ * exactement les mêmes colonnes. Exact au pas de la grille, et quelques centaines de
+ * polygones au lieu d'un carré par cellule. (Pas de turf.union : lent sur des milliers de
+ * carrés et fragile sur les coins qui se touchent.)
  */
-export const coverageGeometry: CoverageGeometryBuilder = (grid, assignments) => {
-  const counts = coverageCounts(grid, assignments);
-  const covered: MultiPolygonGeom = { type: 'MultiPolygon', coordinates: [] };
-  const gaps: MultiPolygonGeom = { type: 'MultiPolygon', coordinates: [] };
-  const overlap: MultiPolygonGeom = { type: 'MultiPolygon', coordinates: [] };
-  for (const cell of grid.cells) {
-    if (cell.forbidden) continue;
-    const square = cellSquare(grid, cell.center);
-    const n = counts[cell.id];
-    (n > 0 ? covered : gaps).coordinates.push(square);
-    if (n > 1) overlap.coordinates.push(square);
+function fusionner(
+  grid: Grid,
+  index: IndexGrille,
+  retenue: (id: number) => boolean,
+): MultiPolygonGeom {
+  const finis: Bloc[] = [];
+  let ouverts = new Map<string, Bloc>();
+
+  for (let ligne = 0; ligne < grid.rows; ligne++) {
+    const suivants = new Map<string, Bloc>();
+    let debut = -1;
+    for (let col = 0; col <= grid.cols; col++) {
+      const id = col < grid.cols ? index.ids[ligne * grid.cols + col] : -1;
+      const dedans = id >= 0 && retenue(id);
+      if (dedans && debut < 0) debut = col;
+      if (!dedans && debut >= 0) {
+        const cle = `${debut}:${col - 1}`;
+        const bloc = ouverts.get(cle);
+        if (bloc) {
+          bloc.ligne1 = ligne;
+          ouverts.delete(cle);
+          suivants.set(cle, bloc);
+        } else {
+          suivants.set(cle, { ligne0: ligne, ligne1: ligne, col0: debut, col1: col - 1 });
+        }
+        debut = -1;
+      }
+    }
+    finis.push(...ouverts.values());
+    ouverts = suivants;
   }
-  return { phase: grid.phase, covered, gaps, overlap };
+  finis.push(...ouverts.values());
+
+  return { type: 'MultiPolygon', coordinates: finis.map((b) => [anneau(index, b)]) };
+}
+
+/** Anneau fermé du rectangle, sens trigonométrique. */
+function anneau(index: IndexGrille, b: Bloc): LngLat[] {
+  const ouest = index.lng0 + b.col0 * index.pasLng;
+  const est = index.lng0 + (b.col1 + 1) * index.pasLng;
+  const sud = index.lat0 + b.ligne0 * index.pasLat;
+  const nord = index.lat0 + (b.ligne1 + 1) * index.pasLat;
+  return [
+    [ouest, sud],
+    [est, sud],
+    [est, nord],
+    [ouest, nord],
+    [ouest, sud],
+  ];
+}
+
+export const coverageGeometry: CoverageGeometryBuilder = (grid, assignments) => {
+  const index = indexerGrille(grid);
+  const counts = coverageCounts(grid, assignments, index);
+  const couvrable = (id: number) => !grid.cells[id].forbidden;
+  return {
+    phase: grid.phase,
+    covered: fusionner(grid, index, (id) => couvrable(id) && counts[id] > 0),
+    gaps: fusionner(grid, index, (id) => couvrable(id) && counts[id] === 0),
+    overlap: fusionner(grid, index, (id) => couvrable(id) && counts[id] > 1),
+  };
 };
