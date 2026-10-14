@@ -4,3 +4,4 @@ export * from './metrics';
 export * from './coverage';
 export * from './voisinage';
 export * from './stabilite';
+export * from './redondance';
