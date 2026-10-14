@@ -2,10 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { buildGrid } from '@aeris/geo';
 import type { Assignment, DeconflictContext, DroneModel, Mission, PilotRule } from '@aeris/shared';
 import {
+  DEFAULT_BAND_M,
   deconflict,
   detectConflicts,
   FLOOR_M,
   horizontalOverlap,
+  MIN_BAND_M,
   slotsOverlap,
   verticalOverlap,
 } from './index';
@@ -182,21 +184,20 @@ describe('Doctrine de séparation en cascade V1', () => {
   it('Niveau 2 Vertical : tranches adaptatives sous plafond bas', () => {
     const ctx = makeCtx();
     const point: [number, number] = [1.25, 43.65];
-    // 4 drones au même point sous plafond 50 m (40 m d'espace disponible de 10 m à 50 m)
+    // 2 drones au même point sous plafond 50 m (40 m d'espace disponible de 10 m à 50 m)
+    // Avec MIN_BAND_M = 20 m, 2 drones tiennent exactement (tranches [10-30 m] et [30-50 m])
     const inputs = [
       makeDroneAssignment('r1', point, 1000, 50),
       makeDroneAssignment('r2', point, 1000, 50),
-      makeDroneAssignment('r3', point, 1000, 50),
-      makeDroneAssignment('r4', point, 1000, 50),
     ];
 
     const res = deconflict(inputs, ctx);
-    expect(res.assignments).toHaveLength(4);
+    expect(res.assignments).toHaveLength(2);
 
-    // Les 4 drones doivent avoir des tranches d'altitude disjointes >= 10 m sans créneau temporel
+    // Les 2 drones doivent avoir des tranches d'altitude disjointes >= 20 m sans créneau temporel
     for (const a of res.assignments) {
       expect(a.slot).toBeUndefined();
-      expect(a.altitude.maxM - a.altitude.minM).toBeGreaterThanOrEqual(10);
+      expect(a.altitude.maxM - a.altitude.minM).toBeGreaterThanOrEqual(MIN_BAND_M);
       expect(a.altitude.maxM).toBeLessThanOrEqual(50);
       expect(a.altitude.minM).toBeGreaterThanOrEqual(FLOOR_M);
     }
@@ -206,15 +207,14 @@ describe('Doctrine de séparation en cascade V1', () => {
   });
 
   it('Niveau 3 Temporel : saturation verticale -> séparation en créneaux temporels', () => {
-    // 6 drones au même point sous plafond 50 m : 6 drones ne peuvent pas avoir 10 m chacun dans 40 m
+    // 4 drones au même point sous plafond 50 m : sous 50 m (40 m dispo), max 2 drones simultanés avec 20 m min
+    // Les 4 drones nécessitent donc une séparation en créneaux temporels
     const ctx = makeCtx({
       resources: [
         { id: 'r1', pilotId: 'p1', droneModelId: 'd-tp1', available: true },
         { id: 'r2', pilotId: 'p2', droneModelId: 'd-tp1', available: true },
         { id: 'r3', pilotId: 'p3', droneModelId: 'd-tp1', available: true },
         { id: 'r4', pilotId: 'p4', droneModelId: 'd-tp1', available: true },
-        { id: 'r5', pilotId: 'p4', droneModelId: 'd-tp1', available: true },
-        { id: 'r6', pilotId: 'p4', droneModelId: 'd-tp1', available: true },
       ],
     });
     const point: [number, number] = [1.25, 43.65];
@@ -223,12 +223,10 @@ describe('Doctrine de séparation en cascade V1', () => {
       makeDroneAssignment('r2', point, 1000, 50),
       makeDroneAssignment('r3', point, 1000, 50),
       makeDroneAssignment('r4', point, 1000, 50),
-      makeDroneAssignment('r5', point, 1000, 50),
-      makeDroneAssignment('r6', point, 1000, 50),
     ];
 
     const res = deconflict(inputs, ctx);
-    expect(res.assignments).toHaveLength(6);
+    expect(res.assignments).toHaveLength(4);
 
     // Tous les drones ont reçu un créneau temporel
     for (const a of res.assignments) {
@@ -246,15 +244,15 @@ describe('Doctrine de séparation en cascade V1', () => {
     const point: [number, number] = [1.25, 43.65];
     const resources = [];
     const inputs: Assignment[] = [];
-    for (let i = 1; i <= 10; i++) {
+    for (let i = 1; i <= 8; i++) {
       resources.push({ id: `drone-${i}`, pilotId: 'p2', droneModelId: 'd-tp1', available: true });
       inputs.push(makeDroneAssignment(`drone-${i}`, point, 1000, 50));
     }
     const ctx = makeCtx({ resources });
 
     const res = deconflict(inputs, ctx);
-    // 8 drones placés au maximum, 2 renoncés
-    expect(res.assignments).toHaveLength(8);
+    // 4 drones placés au maximum (2 créneaux x 2 drones de 20 m sous 50 m), 4 renoncés
+    expect(res.assignments).toHaveLength(4);
 
     // Diagnostics explicites pour chaque drone renoncé
     expect(res.diagnostics.some((d) => d.includes('renoncement pour saturation'))).toBe(true);
@@ -305,11 +303,11 @@ describe('Doctrine de séparation en cascade V1', () => {
 
   it('Topologie en chaîne (A chevauche B qui chevauche C, mais A ne chevauche pas C) : réutilisation spatiale', () => {
     const ctx = makeCtx();
-    // A à x=1.22, B à x=1.23 (~800 m de A), C à x=1.245 (~1.2 km de B, ~2.0 km de A)
-    // Rayon 600 m : A chevauche B (dist ~800 < 1200), B chevauche C (dist ~1200 <= 1200), A et C ne se chevauchent pas (dist ~2000 > 1200)
+    // A à x=1.22, B à x=1.23 (~805 m de A), C à x=1.244 (~1.13 km de B, ~1.93 km de A)
+    // Rayon 600 m : A chevauche B (dist ~805 < 1200), B chevauche C (dist ~1127 < 1200), A et C ne se chevauchent pas (dist ~1933 > 1200)
     const a = makeDroneAssignment('r1', [1.22, 43.65], 600, 50);
     const b = makeDroneAssignment('r2', [1.23, 43.65], 600, 50);
-    const c = makeDroneAssignment('r3', [1.245, 43.65], 600, 50);
+    const c = makeDroneAssignment('r3', [1.244, 43.65], 600, 50);
 
     const res = deconflict([a, b, c], ctx);
     expect(res.assignments).toHaveLength(3);
@@ -326,9 +324,9 @@ describe('Doctrine de séparation en cascade V1', () => {
   });
 
   it('Séparation temporelle dynamique : aucun renoncement prématuré quand un créneau alternatif a de la place', () => {
-    // 4 drones : 3 drones avec plafond 30 m, 1 drone avec plafond 50 m
-    // Sous 30 m, chaque créneau peut accueillir max 2 tranches de 10 m (20 m dispo)
-    // Avec 2 créneaux, les 3 drones de 30 m et le drone de 50 m doivent TOUS être placés
+    // 4 drones : 3 drones avec plafond 50 m, 1 drone avec plafond 90 m
+    // Sous 50 m (40 m dispo), chaque créneau peut accueillir max 2 tranches de 20 m
+    // Avec 2 créneaux, les 3 drones de 50 m et le drone de 90 m doivent TOUS être placés
     const ctx = makeCtx({
       resources: [
         { id: 'r1', pilotId: 'p2', droneModelId: 'd-tp1', available: true },
@@ -339,28 +337,27 @@ describe('Doctrine de séparation en cascade V1', () => {
     });
     const pt: [number, number] = [1.25, 43.65];
     const inputs = [
-      makeDroneAssignment('r1', pt, 1000, 30),
-      makeDroneAssignment('r2', pt, 1000, 30),
-      makeDroneAssignment('r3', pt, 1000, 30),
-      makeDroneAssignment('r4', pt, 1000, 50),
+      makeDroneAssignment('r1', pt, 1000, 50),
+      makeDroneAssignment('r2', pt, 1000, 50),
+      makeDroneAssignment('r3', pt, 1000, 50),
+      makeDroneAssignment('r4', pt, 1000, 90),
     ];
 
     const res = deconflict(inputs, ctx);
     // Les 4 drones doivent être placés sans renoncement
     expect(res.assignments).toHaveLength(4);
     expect(detectConflicts(res.assignments)).toHaveLength(0);
-    // Les 3 drones de 30 m doivent avoir des tranches valides
     for (const a of res.assignments) {
-      expect(a.altitude.maxM).toBeLessThanOrEqual(a.resourceId === 'r4' ? 50 : 30);
+      expect(a.altitude.maxM).toBeLessThanOrEqual(a.resourceId === 'r4' ? 90 : 50);
       expect(a.altitude.minM).toBeGreaterThanOrEqual(FLOOR_M);
     }
   });
 
   it('Préservation de la doctrine de priorité lors de la saturation : les drones prioritaires sont conservés', () => {
-    // 5 drones au même point sous plafond 20 m (10 m d'espace dispo : 1 seul drone par créneau)
+    // 5 drones au même point sous plafond 30 m (20 m d'espace dispo : 1 seul drone par créneau)
     // r-fixed a une position imposée
     // r-tp2 a un plafond 120 m (TP2)
-    // r-low1, r-low2, r-low3 sont TP1 avec plafond 20 m
+    // r-low1, r-low2, r-low3 sont TP1 avec plafond 30 m
     const pt: [number, number] = [1.25, 43.65];
     const ctx = makeCtx({
       resources: [
@@ -379,11 +376,11 @@ describe('Doctrine de séparation en cascade V1', () => {
     });
 
     const inputs = [
-      makeDroneAssignment('r-low1', pt, 1000, 20),
-      makeDroneAssignment('r-low2', pt, 1000, 20),
-      makeDroneAssignment('r-fixed', pt, 1000, 20),
+      makeDroneAssignment('r-low1', pt, 1000, 30),
+      makeDroneAssignment('r-low2', pt, 1000, 30),
+      makeDroneAssignment('r-fixed', pt, 1000, 30),
       makeDroneAssignment('r-tp2', pt, 1000, 120),
-      makeDroneAssignment('r-low3', pt, 1000, 20),
+      makeDroneAssignment('r-low3', pt, 1000, 30),
     ];
 
     const res = deconflict(inputs, ctx);

@@ -7,10 +7,10 @@ import {
 } from '@aeris/shared';
 import { distanceM } from '@aeris/geo';
 
-/** Hauteur par défaut d'une tranche d'altitude attribuée à un couple (20 m). */
-export const DEFAULT_BAND_M = 20;
-/** Hauteur minimale d'une tranche pour adapter la séparation sous plafond bas (10 m). */
-export const MIN_BAND_M = 10;
+/** Hauteur par défaut d'une tranche d'altitude attribuée à un couple (30 m). */
+export const DEFAULT_BAND_M = 30;
+/** Hauteur minimale d'une tranche pour adapter la séparation sous plafond bas (20 m). */
+export const MIN_BAND_M = 20;
 /** Hauteur minimale de sécurité au-dessus du sol (10 m). */
 export const FLOOR_M = 10;
 /** Nombre par défaut de créneaux temporels par phase pour la séparation temporelle (2). */
