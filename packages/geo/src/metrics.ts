@@ -1,29 +1,31 @@
 import { PRIORITY_WEIGHTS, type Assignment, type Grid, type MetricsEngine } from '@aeris/shared';
-import { distanceM } from './distance';
+import { indexerGrille, pourChaqueCelluleAPortee, type IndexGrille } from './voisinage';
 
 /** Nombre de drones couvrant chaque cellule (index = cell.id). */
-export function coverageCounts(grid: Grid, assignments: Assignment[]): Uint16Array {
+export function coverageCounts(
+  grid: Grid,
+  assignments: Assignment[],
+  index: IndexGrille = indexerGrille(grid),
+): Uint16Array {
   const counts = new Uint16Array(grid.cells.length);
   for (const a of assignments) {
-    const p = a.position.coordinates;
-    for (const cell of grid.cells) {
-      if (!cell.forbidden && distanceM(p, cell.center) <= a.radiusM) counts[cell.id]++;
-    }
+    pourChaqueCelluleAPortee(grid, index, a.position.coordinates, a.radiusM, (cell) => {
+      counts[cell.id]++;
+    });
   }
   return counts;
 }
 
 export const computeMetrics: MetricsEngine = (grid, assignments, opts = {}) => {
   const n = grid.cells.length;
-  const counts = coverageCounts(grid, assignments);
+  const index = indexerGrille(grid);
+  const counts = coverageCounts(grid, assignments, index);
   const served = new Uint8Array(n);
   for (const a of assignments) {
-    const p = a.position.coordinates;
-    for (const cell of grid.cells) {
-      if (cell.forbidden || served[cell.id]) continue;
-      if (distanceM(p, cell.center) > a.radiusM) continue;
+    pourChaqueCelluleAPortee(grid, index, a.position.coordinates, a.radiusM, (cell) => {
+      if (served[cell.id]) return;
       if (!opts.canServe || opts.canServe(a.resourceId, cell)) served[cell.id] = 1;
-    }
+    });
   }
 
   let coverable = 0;
