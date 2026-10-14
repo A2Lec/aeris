@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import type { CommuneCoverage } from '@aeris/shared';
 import {
   CONSTRAINT_COLORS,
   COVERAGE_COLORS,
@@ -6,6 +7,7 @@ import {
   PRIORITY_COLORS,
   WORK_AREA_STYLE,
 } from '../map/colors';
+import { pct } from './format';
 import './components.css';
 
 interface Item {
@@ -60,9 +62,15 @@ function Swatch({ item }: { item: Item }) {
 
 /**
  * Légende flottante de la carte : styles des couches visibles et communes concernées
- * (liste calculée par @aeris/geo dans les métriques de la phase affichée).
+ * avec la part de leur surface couverte (calculées par @aeris/geo pour la phase affichée).
  */
-export function Legend({ withCoverage, communes }: { withCoverage: boolean; communes?: string[] }) {
+export function Legend({
+  withCoverage,
+  communes,
+}: {
+  withCoverage: boolean;
+  communes?: CommuneCoverage[];
+}) {
   const [open, setOpen] = useState(true);
   const items = withCoverage ? [...BASE, ...COVERAGE] : BASE;
   return (
@@ -94,7 +102,14 @@ export function Legend({ withCoverage, communes }: { withCoverage: boolean; comm
                 {communes.length} commune{communes.length > 1 ? 's' : ''} concernée
                 {communes.length > 1 ? 's' : ''}
               </b>
-              <p>{communes.join(', ')}</p>
+              <ul className="communes-list">
+                {communes.map((c) => (
+                  <li key={c.code}>
+                    {c.nom}
+                    <span>{c.areaM2 > 0 ? pct(c.coveredAreaM2 / c.areaM2) : '—'} couverte</span>
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
         </>
