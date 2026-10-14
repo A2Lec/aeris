@@ -3,34 +3,13 @@
  * proposé par un recalcul, pour une même phase. Le brief demande un recalcul qui « limite les
  * changements inutiles » ; cette mesure permet de le montrer au commandant avant qu'il valide.
  *
- * Responsable d'une cellule : le couple le plus proche parmi ceux qui la couvrent (à égalité,
- * le plus petit identifiant), pour que le résultat ne dépende pas de l'ordre des affectations.
+ * Responsable d'une cellule : même règle que la carte « qui couvre quoi » (parCouple.ts).
  */
-import type { Assignment, Grid, StabilityEngine } from '@aeris/shared';
+import type { StabilityEngine } from '@aeris/shared';
 import { distanceM } from './distance';
 import { computeMetrics } from './metrics';
-import { indexerGrille, pourChaqueCelluleAPortee, type IndexGrille } from './voisinage';
-
-/** Index (dans `assignments`) du couple responsable de chaque cellule, -1 si non couverte. */
-function responsables(grid: Grid, index: IndexGrille, assignments: Assignment[]): Int32Array {
-  const resp = new Int32Array(grid.cells.length).fill(-1);
-  const dist = new Float64Array(grid.cells.length).fill(Infinity);
-  assignments.forEach((a, i) => {
-    const p = a.position.coordinates;
-    pourChaqueCelluleAPortee(grid, index, p, a.radiusM, (cell) => {
-      const d = distanceM(p, cell.center);
-      const actuel = resp[cell.id];
-      if (
-        d < dist[cell.id] ||
-        (d === dist[cell.id] && a.resourceId < assignments[actuel].resourceId)
-      ) {
-        dist[cell.id] = d;
-        resp[cell.id] = i;
-      }
-    });
-  });
-  return resp;
-}
+import { responsables } from './parCouple';
+import { indexerGrille } from './voisinage';
 
 const points = (x: number) =>
   `${x > 0 ? '+' : x < 0 ? '−' : ''}${Math.round(Math.abs(x) * 100)} pts`;

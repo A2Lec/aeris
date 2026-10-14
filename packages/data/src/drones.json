@@ -25,9 +25,9 @@
   },
   {
     "id": "mini-5",
-    "name": "DJI Mini 5",
+    "name": "DJI Mini 5 Pro",
     "enduranceMin": 36,
-    "maxWindMs": 10.7,
+    "maxWindMs": 12,
     "rainOk": false,
     "minTempC": -10,
     "maxTempC": 40,
