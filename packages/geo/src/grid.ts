@@ -1,5 +1,5 @@
 import { bbox, booleanPointInPolygon } from '@turf/turf';
-import type { Cell, Grid, Mission, PriorityZone, Requirement } from '@aeris/shared';
+import type { Cell, GridBuilder, PriorityZone, Requirement } from '@aeris/shared';
 import { M_PER_DEG_LAT, metersPerDegLng } from './distance';
 
 export function zoneActive(zone: PriorityZone, phase: number): boolean {
@@ -18,7 +18,7 @@ function mergeRequirement(a: Requirement, b: Requirement): Requirement {
  * Discrétise la zone de travail en cellules carrées de mission.gridCellM mètres.
  * Une grille par phase, car les zones prioritaires actives changent selon la phase.
  */
-export function buildGrid(mission: Mission, phase: number): Grid {
+export const buildGrid: GridBuilder = (mission, phase) => {
   const size = mission.gridCellM;
   const [minX, minY, maxX, maxY] = bbox(mission.workArea);
   const lat0 = (minY + maxY) / 2;
@@ -69,4 +69,4 @@ export function buildGrid(mission: Mission, phase: number): Grid {
   }
 
   return { phase, cellSizeM: size, cellAreaM2: size * size, rows, cols, cells };
-}
+};

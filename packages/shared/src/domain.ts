@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { AreaGeom, PointGeom, PolygonGeom } from './geojson';
+import { AreaGeom, MultiPolygonGeom, PointGeom, PolygonGeom } from './geojson';
 
 // ─── Référentiels ────────────────────────────────────────────────────────────
 
@@ -160,6 +160,18 @@ export const Proposal = z.object({
   createdAt: z.string(),
 });
 export type Proposal = z.infer<typeof Proposal>;
+
+/** Géométries de couverture d'une phase, pour la carte (calculées par @aeris/geo). */
+export const CoverageLayers = z.object({
+  phase: z.number().int().min(0),
+  /** Surface couverte par au moins un drone. */
+  covered: MultiPolygonGeom,
+  /** Trous : surface couvrable (hors zones interdites) non couverte. */
+  gaps: MultiPolygonGeom,
+  /** Surface couverte par au moins deux drones. */
+  overlap: MultiPolygonGeom,
+});
+export type CoverageLayers = z.infer<typeof CoverageLayers>;
 
 export const Weather = z.object({
   windMs: z.number(),

@@ -4,11 +4,16 @@ Outil d'aide à la décision pour **dimensionner et coordonner l'emploi des dron
 
 ## Démarrer
 
+Prérequis : Node 22. `pnpm` est fourni par Corepack (inclus dans Node) :
+
 ```bash
+corepack enable     # une fois par machine (sinon : « pnpm: commande introuvable »)
 pnpm install        # toutes les dépendances sont déjà déclarées : ne pas en ajouter sans prévenir P1
 pnpm dev            # API sur :3001, front sur http://localhost:5173
+pnpm dev:mock       # front seul, sur un faux backend en mémoire (voir « Mocks du front »)
 pnpm typecheck      # avant chaque merge request
-pnpm test
+pnpm test           # tests de contrat + intégration
+pnpm format         # avant chaque commit
 ```
 
 Le squelette fonctionne déjà de bout en bout : charger la mission de démo → phasage → 3 propositions → lancer l'opération → déclarer un TP indisponible → recalculer → appliquer.
@@ -56,13 +61,73 @@ Cycle de vie d'une mission (machine à états côté API) :
 4. **Mesure** (`geo/computeMetrics`) : couverture totale, prioritaire (par un drone capable), pondérée, chevauchement, surfaces.
 5. **Plusieurs propositions** : une par stratégie (`couverture_globale`, `priorite`, `economie_moyens`), calculées en parallèle.
 
+## Contrats et tests : garantir que tout se branche
+
+Trois niveaux, du plus local au plus global. **Si ta suite de contrat passe, ton module se branchera.**
+
+### 1. Interfaces (`packages/shared/src/engines.ts`)
+
+Chaque moteur implémente un type déclaré dans `shared`, et le déclare explicitement :
+
+| Interface                 | Implémentation                                | Propriétaire |
+| ------------------------- | --------------------------------------------- | ------------ |
+| `GridBuilder`             | `buildGrid` (`packages/geo`)                  | P3           |
+| `MetricsEngine`           | `computeMetrics` (`packages/geo`)             | P3           |
+| `CoverageGeometryBuilder` | `coverageGeometry` (`packages/geo`) → carte   | P3 → P5      |
+| `Solver`                  | `greedySolve`, `ilpSolve` (`packages/solver`) | P2           |
+| `Deconflicter`            | `deconflict` (`packages/deconflict`)          | P4           |
+| `WeatherProvider`         | `fetchWeather` (`packages/weather`)           | P4           |
+| `WeatherFilter`           | `excludedByWeather` (`packages/weather`)      | P4           |
+
+Changer une signature casse la compilation **dans ton propre dossier**, pas chez les autres : c'est voulu. Besoin d'un paramètre de plus ? Il est probablement déjà dans le contexte (`SolveContext`, `DeconflictContext`) ; sinon, MR sur `shared` via P1.
+
+Les données échangées avec le front (mission, propositions, événements, `CoverageLayers`…) sont des schémas zod : l'API valide ce qui entre, les tests valident ce qui sort.
+
+### 2. Suites de contrat (`packages/contracts`)
+
+Des tests écrits une fois, que **chaque implémentation** exécute dans son package (`src/contract.test.ts`). Ils tournent sur toutes les missions de test de `packages/data/src/fixtures/index.ts` (démo, aucun moyen, arrêté à 0, position imposée, nuit sans thermique, plafond militaire, urbain, 3 phases, zone minuscule, grande zone interdite).
+
+| Suite                   | Ce qui est garanti                                                                                                                                                                                                                 |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `solverContract`        | < 5 s ; arrêté respecté ; seulement des couples disponibles et non exclus (et chaque exclusion expliquée) ; position imposée, zone limite, zone de travail, zones interdites ; portée et plafond du niveau ; `infaisable` expliqué |
+| `deconflictContract`    | aucun couple perdu sans le dire ; sous le plafond du solveur et les plafonds locaux ; position imposée intacte ; tout conflit résiduel déclaré                                                                                     |
+| `gridContract`          | cellules dans la zone ; priorité, capacités, interdit, urbain et plafonds conformes à la config de la phase                                                                                                                        |
+| `metricsContract`       | ratios dans [0, 1], surfaces cohérentes, cas « rien / tout / double », monotonie                                                                                                                                                   |
+| `coverageContract`      | ce que la carte affiche (couvert, trous, chevauchement) = ce que les métriques mesurent                                                                                                                                            |
+| `weatherFilterContract` | exclusions exactes (vent, pluie, nuit, froid), toujours justifiées                                                                                                                                                                 |
+
+Les vérifications utilisent leurs propres calculs géométriques (pas `@aeris/geo`), pour qu'un bug ne se valide pas lui-même. Une règle du contrat te bloque à tort ? Parles-en à P1, on la corrige ensemble ; ne la contourne pas dans ton code.
+
+Tes propres tests métier (qualité de la solution, cas particuliers) vont à côté, dans ton package (`*.test.ts`).
+
+### 3. Intégration (`apps/api/src/api.test.ts`)
+
+Joue le scénario de démo complet contre l'API (création → solve → couverture → édition → conduite → WebSocket → TP indisponible → recalcul → validation → changement de phase), sans réseau, en validant **chaque réponse** avec les schémas zod. C'est la garantie que `main` démarre.
+
+### Ma commande avant chaque MR
+
+```bash
+pnpm --filter @aeris/solver test       # P2
+pnpm --filter @aeris/geo test          # P3 (+ @aeris/data)
+pnpm --filter @aeris/deconflict test   # P4
+pnpm --filter @aeris/weather test      # P4
+pnpm --filter @aeris/web test          # P5, P6
+pnpm typecheck && pnpm test            # tout le monde, avant de pousser
+```
+
+### Mocks du front
+
+`pnpm dev:mock` lance le front sur un faux backend en mémoire (`apps/web/src/api/mock.ts`) : P5 et P6 avancent sans attendre l'API ni le solveur. Les réponses viennent de `apps/web/src/api/mocks/snapshot.json`, **capturé sur la vraie API** par `pnpm mocks`. Un test vérifie qu'il respecte toujours les schémas : après une évolution de `shared`, relancer `pnpm mocks` et commiter le fichier.
+
+Nouvelle route ? P1 l'ajoute au client (`api/client.ts`), au mock et au script `gen-mocks.ts` dans la même MR.
+
 ## Répartition (6 personnes)
 
 Chaque personne **possède un dossier** : personne d'autre n'y écrit sans la prévenir (voir `.github/CODEOWNERS`).
 
 | #      | Rôle                          | Dossiers possédés                                                                          | Livrables clés                                                                                                                                                      |
 | ------ | ----------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **P1** | Lead archi / intégration      | `packages/shared`, `apps/api`, racine                                                      | dépôt + CI, contrats, routes, pipeline, simulation « avec N TP1 / M TP2 », export du dispositif, merges, démo                                                       |
+| **P1** | Lead archi / intégration      | `packages/shared`, `packages/contracts`, `apps/api`, racine                                | dépôt + CI, contrats, routes, pipeline, simulation « avec N TP1 / M TP2 », export du dispositif, merges, démo                                                       |
 | **P2** | Solveur                       | `packages/solver`                                                                          | ILP HiGHS (limite ~3 s, repli glouton), stratégies réellement différentes, **dimensionnement** (« quels moyens me faut-il pour X % ? »), statut infaisable expliqué |
 | **P3** | Moteur géo                    | `packages/geo`, `packages/data`                                                            | polygones de couverture / trous / chevauchements en GeoJSON pour la carte, communes concernées, métrique de **stabilité après changement**, performance             |
 | **P4** | Séparation & météo            | `packages/deconflict`, `packages/weather`                                                  | cascade complète (secteurs Voronoï, plafonds locaux urbain/militaire, créneaux, renoncement), météo par phase (prévision horaire)                                   |
@@ -71,7 +136,7 @@ Chaque personne **possède un dossier** : personne d'autre n'y écrit sans la pr
 
 Points de couplage à anticiper :
 
-- **P3 ↔ P5** : P3 expose les géométries de couverture, P5 les affiche (se mettre d'accord sur la signature dès 11 h).
+- **P3 ↔ P5** : P3 calcule les géométries de couverture (`CoverageLayers`, routes `.../coverage` et `.../live/coverage`), P5 les affiche. La forme est figée ; P3 peut améliorer le calcul (fusion des carrés) sans rien casser chez P5.
 - **P2 ↔ P4** : le solveur place, la séparation ajuste ; si la séparation renonce à un couple, elle le dit dans `diagnostics`.
 - **P1 ↔ tous** : toute évolution de `packages/shared` passe par P1.
 
@@ -83,7 +148,9 @@ Points de couplage à anticiper :
 4. **Formatage** : `pnpm format` avant chaque commit (Prettier commité, même config pour tous).
 5. **Branches courtes** : `p2/ilp`, `p5/geoman`… Rebase sur `main` et merge toutes les 1 à 2 h. Une MR = un sujet.
 6. **Travailler contre des mocks** : la mission de démo (`packages/data/src/fixtures`) permet à chacun de tester seul.
-7. **CI** : typecheck + tests sur chaque MR ; `main` doit toujours démarrer.
+7. **CI** : typecheck + format + tests (contrats, intégration, mocks) sur chaque MR ; `main` doit toujours démarrer.
+8. **Protection de `main`** (P1, une fois, dans GitHub → Settings → Branches) : interdire le push direct, exiger la CI verte (`check`) et la revue du propriétaire (CODEOWNERS) avant merge. Sans ça, la CI informe mais ne bloque rien.
+9. **CODEOWNERS** : remplacer `@p1` … `@p6` par les identifiants GitHub réels.
 
 ## Planning (8 h)
 

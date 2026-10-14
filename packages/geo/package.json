@@ -13,5 +13,8 @@
   "dependencies": {
     "@aeris/shared": "workspace:*",
     "@turf/turf": "^7.4.0"
+  },
+  "devDependencies": {
+    "@aeris/contracts": "workspace:*"
   }
 }

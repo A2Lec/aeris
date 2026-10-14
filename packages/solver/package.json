@@ -17,6 +17,7 @@
     "highs": "^1.15.3"
   },
   "devDependencies": {
+    "@aeris/contracts": "workspace:*",
     "@aeris/data": "workspace:*"
   }
 }

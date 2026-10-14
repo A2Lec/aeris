@@ -1,16 +1,5 @@
-import {
-  PRIORITY_WEIGHTS,
-  type Assignment,
-  type Cell,
-  type Grid,
-  type Metrics,
-} from '@aeris/shared';
+import { PRIORITY_WEIGHTS, type Assignment, type Grid, type MetricsEngine } from '@aeris/shared';
 import { distanceM } from './distance';
-
-export interface MetricsOptions {
-  /** Le couple peut-il servir cette cellule (capacités requises) ? Par défaut : oui. */
-  canServe?: (resourceId: string, cell: Cell) => boolean;
-}
 
 /** Nombre de drones couvrant chaque cellule (index = cell.id). */
 export function coverageCounts(grid: Grid, assignments: Assignment[]): Uint16Array {
@@ -24,11 +13,7 @@ export function coverageCounts(grid: Grid, assignments: Assignment[]): Uint16Arr
   return counts;
 }
 
-export function computeMetrics(
-  grid: Grid,
-  assignments: Assignment[],
-  opts: MetricsOptions = {},
-): Metrics {
+export const computeMetrics: MetricsEngine = (grid, assignments, opts = {}) => {
   const n = grid.cells.length;
   const counts = coverageCounts(grid, assignments);
   const served = new Uint8Array(n);
@@ -77,4 +62,4 @@ export function computeMetrics(
     forbiddenAreaM2: forbidden * area,
     communes: [], // TODO(P3) : geo.api.gouv.fr/communes?lat=&lon= sur les cellules couvertes
   };
-}
+};

@@ -1,6 +1,7 @@
 # Remplacer @p1 … @p6 par les identifiants GitLab/GitHub de l'équipe.
 *                               @p1
 /packages/shared/               @p1
+/packages/contracts/            @p1
 /apps/api/                      @p1
 /packages/solver/               @p2
 /packages/geo/                  @p3

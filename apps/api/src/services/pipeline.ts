@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { drones, pilotRules } from '@aeris/data';
-import { buildGrid, computeMetrics } from '@aeris/geo';
+import { buildGrid, computeMetrics, coverageGeometry } from '@aeris/geo';
 import { solve } from '@aeris/solver';
 import { deconflict } from '@aeris/deconflict';
 import { excludedByWeather, fetchWeather } from '@aeris/weather';
@@ -46,6 +46,13 @@ export interface BuildOptions {
   phases?: number[];
 }
 
+export function coverageFor(mission: Mission, phase: number, assignments: Assignment[]) {
+  return coverageGeometry(
+    buildGrid(mission, phase),
+    assignments.filter((a) => a.phase === phase),
+  );
+}
+
 /** Grille → solveur → séparation → métriques, phase par phase. */
 export async function buildProposal(
   mission: Mission,
@@ -73,7 +80,13 @@ export async function buildProposal(
       excluded,
       previous,
     });
-    const dc = deconflict(res.assignments);
+    const dc = deconflict(res.assignments, {
+      mission,
+      catalog: drones,
+      rules: pilotRules,
+      grid,
+      phase,
+    });
     assignments.push(...dc.assignments);
     metricsByPhase.push(computeMetrics(grid, dc.assignments, { canServe }));
     for (const d of [...res.diagnostics, ...dc.diagnostics])

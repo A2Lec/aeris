@@ -5,10 +5,12 @@
   "packageManager": "pnpm@10.28.0",
   "scripts": {
     "dev": "pnpm --parallel --filter @aeris/api --filter @aeris/web dev",
+    "dev:mock": "pnpm --filter @aeris/web dev --mode mock",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "mocks": "pnpm --filter @aeris/api mocks"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",

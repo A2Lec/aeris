@@ -61,6 +61,9 @@ export const API = {
   events: (id: string) => `/api/missions/${id}/events`,
   recompute: (id: string) => `/api/missions/${id}/recompute`,
   acceptRecompute: (id: string) => `/api/missions/${id}/recompute/accept`,
+  coverage: (id: string, pid: string, phase: number) =>
+    `/api/missions/${id}/proposals/${pid}/coverage?phase=${phase}`,
   liveWs: (id: string) => `/api/missions/${id}/live`,
+  liveCoverage: (id: string) => `/api/missions/${id}/live/coverage`,
   weather: (lat: number, lng: number) => `/api/weather?lat=${lat}&lng=${lng}`,
 } as const;

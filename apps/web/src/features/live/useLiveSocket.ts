@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import type { WsMessage } from '@aeris/shared';
-import { liveSocketUrl } from '../../api/client';
+import { isMock, liveSocketUrl } from '../../api/client';
+import { subscribeMockLive } from '../../api/mock';
 import { useLiveStore } from './store';
 
 /** Abonnement WebSocket à l'état temps réel, avec reconnexion automatique. */
@@ -8,6 +9,10 @@ export function useLiveSocket(missionId: string | undefined) {
   const { setLive, setConnected } = useLiveStore();
   useEffect(() => {
     if (!missionId) return;
+    if (isMock) {
+      setConnected(true);
+      return subscribeMockLive(setLive);
+    }
     let ws: WebSocket | undefined;
     let stopped = false;
     let retry: ReturnType<typeof setTimeout> | undefined;

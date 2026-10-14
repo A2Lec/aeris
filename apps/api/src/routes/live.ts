@@ -2,7 +2,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import { AcceptRequest, MissionEvent, type LiveState, type MissionState } from '@aeris/shared';
 import { HttpError, getOr404, onLive, publishLive, store } from '../store';
 import { applyEvent } from '../services/events';
-import { buildProposal, metricsFor } from '../services/pipeline';
+import { buildProposal, coverageFor, metricsFor } from '../services/pipeline';
 
 type IdParams = { Params: { id: string } };
 
@@ -34,6 +34,13 @@ const plugin: FastifyPluginAsync = async (app) => {
     live.pendingRecompute = proposal;
     publishLive(st.mission.id, live);
     return proposal;
+  });
+
+  /** Couverture / trous / chevauchement des positions réelles courantes. */
+  app.get<IdParams>('/missions/:id/live/coverage', async (req) => {
+    const st = getOr404(req.params.id);
+    const live = liveOf(st);
+    return coverageFor(st.mission, live.phase, live.assignments);
   });
 
   /** L'opérateur valide le recalcul proposé. */

@@ -12,5 +12,8 @@
   },
   "dependencies": {
     "@aeris/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@aeris/contracts": "workspace:*"
   }
 }
