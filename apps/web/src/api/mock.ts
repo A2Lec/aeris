@@ -51,8 +51,9 @@ export const mockApi: Api = {
   demoMission: () => delay(snap.demoMission),
   createMission: (input) => {
     state = {
-      ...clone(snap.created),
-      mission: { ...clone(input), id: snap.created.mission.id } as MissionState['mission'],
+      mission: { ...clone(input), id: crypto.randomUUID() } as MissionState['mission'],
+      status: 'config',
+      proposals: [],
     };
     return delay(state);
   },

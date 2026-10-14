@@ -3,6 +3,7 @@ import { api } from './api/client';
 import { useMissionStore } from './app/missionStore';
 import { MapView } from './map/MapView';
 import { MissionLayers } from './map/layers/MissionLayers';
+import { MissionSetupLayer } from './map/layers/MissionSetupLayer';
 import { ConfigPanel } from './features/config/ConfigPanel';
 import { ScenariosPanel } from './features/scenarios/ScenariosPanel';
 import { ScenarioLayers } from './features/scenarios/ScenarioLayers';
@@ -42,6 +43,7 @@ export function App() {
               key={s.id}
               className={i === current ? 'active' : i < current ? 'done' : ''}
               onClick={() => goTo(s.id)}
+              disabled={!state || s.id === 'conduite'}
             >
               {i + 1}. {s.label}
             </button>
@@ -57,6 +59,7 @@ export function App() {
           {state && (status === 'config' || status === 'phasage') && (
             <MissionLayers mission={state.mission} />
           )}
+          {!state && <MissionSetupLayer />}
           {status === 'propositions' && <ScenarioLayers />}
           {status === 'conduite' && <LiveLayers />}
         </MapView>

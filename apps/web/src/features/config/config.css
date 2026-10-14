@@ -1,0 +1,83 @@
+input[type='text'],
+select {
+  max-width: 180px;
+  padding: 4px 6px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #fff;
+  font: inherit;
+}
+
+.config-help {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.config-draw-tools {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: 8px 0;
+}
+
+.config-draw-tools button {
+  font-size: 12px;
+}
+
+.config-ready {
+  align-self: center;
+  color: var(--ok);
+  font-size: 12px;
+}
+
+.config-resource-form {
+  display: grid;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px;
+  margin: 8px 0;
+}
+
+.config-resource-form button {
+  justify-self: start;
+}
+
+.config-resource-form strong {
+  font-size: 12px;
+}
+
+.resource-availability {
+  display: inline-flex;
+  justify-content: flex-start;
+  gap: 4px;
+  width: auto;
+  margin: 0 0 0 8px;
+  font-size: 12px;
+}
+
+.resource-availability input {
+  margin: 0;
+}
+
+.zone-phases {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 6px 0;
+}
+
+.zone-phase {
+  display: inline-flex;
+  justify-content: flex-start;
+  gap: 4px;
+  width: auto;
+  margin: 0;
+  font-size: 12px;
+}
+
+.zone-phase input {
+  margin: 0;
+}
