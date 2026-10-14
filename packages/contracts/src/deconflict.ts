@@ -34,10 +34,14 @@ function inputFor(mission: Mission, ctx: DeconflictContext, layout: Layout): Ass
     });
 }
 
-/** Plafond local le plus bas sous le disque du couple. */
+/**
+ * Plafond local le plus bas sous la zone survolée par le couple : son disque, restreint à son
+ * secteur s'il en a un (un drone qui contourne une zone à hauteur limitée n'y est pas soumis).
+ */
 function localCeiling(a: Assignment, ctx: DeconflictContext): number {
   let ceiling = Infinity;
   for (const c of ctx.grid.cells) {
+    if (a.sector && !inArea(c.center, a.sector)) continue;
     if (c.maxHeightM !== undefined && distM(a.position.coordinates, c.center) <= a.radiusM) {
       ceiling = Math.min(ceiling, c.maxHeightM);
     }
