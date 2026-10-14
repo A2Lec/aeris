@@ -11,7 +11,7 @@ import {
 } from '@aeris/geo';
 import { needsSizing, sizeFleet, solve } from '@aeris/solver';
 import { deconflict } from '@aeris/deconflict';
-import { excludedByWeather, fetchWeather, flyability } from '@aeris/weather';
+import { excludedByWeather, fetchWeather, flyability, weatherForPhase } from '@aeris/weather';
 import {
   meetsRequirement,
   type Assignment,
@@ -111,9 +111,6 @@ export async function buildProposal(
 ): Promise<Proposal> {
   const phases = opts.phases ?? [...Array(mission.phaseCount).keys()];
   const catalog = getDrones();
-  // Une météo de repli n'est pas une mesure : on ne s'en sert pas pour écarter des drones.
-  const realWeather = opts.weather?.source === 'repli' ? undefined : opts.weather;
-  const excluded = realWeather ? excludedByWeather(mission.resources, catalog, realWeather) : {};
   const assignments: Assignment[] = [];
   const metricsByPhase: Metrics[] = [];
   const diagnostics: string[] = [];
@@ -127,6 +124,7 @@ export async function buildProposal(
 
   for (const phase of phases) {
     const grid = buildGrid(mission, phase);
+    const excluded = excludedForPhase(mission, phase, opts.weather, catalog);
     const res = await solve({
       mission,
       catalog,
@@ -166,6 +164,24 @@ export async function buildProposal(
 }
 
 /**
+ * Couples que la météo interdit pendant une phase : { resourceId: raison }.
+ * Le jour ou la nuit vient de l'horaire de la phase, pas de l'heure du calcul (une mission
+ * planifiée de 8 h à 12 h reste de jour, même calculée le soir). Sans période déclarée, on
+ * garde l'état mesuré. Une météo de repli n'est pas une mesure : elle n'écarte aucun drone.
+ */
+export function excludedForPhase(
+  mission: Mission,
+  phase: number,
+  weather: Weather | undefined,
+  catalog = getDrones(),
+): Record<string, string> {
+  if (!weather || weather.source === 'repli') return {};
+  const [lng, lat] = workAreaCenter(mission);
+  const w = mission.period ? weatherForPhase(weather, mission, phase, lat, lng) : weather;
+  return excludedByWeather(mission.resources, catalog, w);
+}
+
+/**
  * Planification sans moyens réels : le solveur dimensionne la flotte (nombre de drones et de
  * télépilotes, modèles de la bibliothèque) et la mission reçoit ces couples génériques.
  * Une mission qui a déjà des couples nommés est laissée telle quelle.
@@ -176,12 +192,22 @@ export function sizeMission(
 ): { mission: Mission; diagnostics: string[] } {
   if (!needsSizing(mission)) return { mission, diagnostics: [] };
   const realWeather = weather?.source === 'repli' ? undefined : weather;
+  const phases = [...Array(mission.phaseCount).keys()];
+  // Même règle que excludedForPhase : le jour ou la nuit suit l'horaire de chaque phase.
+  const [lng, lat] = workAreaCenter(mission);
+  const phaseWeathers = realWeather
+    ? phases.map((phase) =>
+        mission.period ? weatherForPhase(realWeather, mission, phase, lat, lng) : realWeather,
+      )
+    : [];
   const sizing = sizeFleet({
     mission,
     catalog: getDrones(),
     rules: pilotRules,
-    grids: [...Array(mission.phaseCount).keys()].map((phase) => buildGrid(mission, phase)),
-    flyable: realWeather ? (model) => flyability(model, realWeather).ok : undefined,
+    grids: phases.map((phase) => buildGrid(mission, phase)),
+    flyable: realWeather
+      ? (model) => phaseWeathers.every((w) => flyability(model, w).ok)
+      : undefined,
   });
   return {
     mission: { ...mission, pilots: sizing.pilots, resources: sizing.resources },
