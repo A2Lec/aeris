@@ -1,5 +1,8 @@
-import type { SolveContext, SolveResult } from '@aeris/shared';
+import { booleanPointInPolygon } from '@turf/turf';
+import type { Cell, SolveContext, SolveResult } from '@aeris/shared';
+import { distanceM } from '@aeris/geo';
 import {
+  addCandidate,
   buildProblem,
   candidateCost,
   isProblem,
@@ -14,6 +17,10 @@ const ITERATIONS = 30_000;
 const TIME_BUDGET_MS = 800;
 /** Température finale relative à la température initiale. */
 const FINAL_TEMPERATURE_RATIO = 1e-3;
+/** Affinage final : rayon de recherche autour de chaque drone, et nombre max de passes. */
+const REFINE_RADIUS_M = 300;
+const REFINE_ROUNDS = 6;
+const REFINE_BUDGET_MS = 400;
 /** Probabilité de chercher le nouveau candidat près de la position courante. */
 const LOCAL_MOVE_PROBABILITY = 0.7;
 
@@ -227,12 +234,112 @@ export function anneal(p: Problem, opts: AnnealOptions = {}): Int32Array {
 }
 
 /**
+ * Affinage au pas de la grille (100 m) : les candidats du recuit sont espacés de 300 m, ce qui
+ * laisse des interstices entre disques. Chaque drone essaie les cellules voisines de sa
+ * position et garde la meilleure ; on recommence tant qu'une passe améliore le score.
+ */
+export function refine(p: Problem, choice: Int32Array): Int32Array {
+  const s = new State(p);
+  choice.forEach((j, k) => {
+    if (j >= 0) s.add(k, j);
+  });
+  const { grid } = p.ctx;
+  const at = new Map(grid.cells.map((c) => [`${c.row},${c.col}`, c]));
+  const reach = Math.max(1, Math.round(REFINE_RADIUS_M / grid.cellSizeM));
+  // Par couple : cellule → indice de candidat, pour ne pas créer deux fois le même.
+  const known = p.usable.map((u) => {
+    const m = new Map<number, number>();
+    u.candidateCells.forEach((c, j) => c && m.set(c.id, j));
+    return m;
+  });
+  const indexOf = (k: number, c: Cell) => {
+    let j = known[k]!.get(c.id);
+    if (j === undefined) {
+      j = addCandidate(p, k, c);
+      known[k]!.set(c.id, j);
+    }
+    return j;
+  };
+
+  const deadline = Date.now() + REFINE_BUDGET_MS;
+  for (let round = 0; round < REFINE_ROUNDS && Date.now() < deadline; round++) {
+    let improved = false;
+    p.usable.forEach((u, k) => {
+      const j = s.choice[k]!;
+      const here = j >= 0 ? u.candidateCells[j] : undefined;
+      if (!here || u.fixed) return;
+      s.remove(k);
+      let best = j;
+      let bestGain = s.gainAt(k, j);
+      for (let dr = -reach; dr <= reach; dr++)
+        for (let dc = -reach; dc <= reach; dc++) {
+          const c = at.get(`${here.row + dr},${here.col + dc}`);
+          if (!c || c.forbidden || c.id === here.id) continue;
+          if (u.res.allowedArea && !booleanPointInPolygon(c.center, u.res.allowedArea)) continue;
+          const nj = indexOf(k, c);
+          const g = s.gainAt(k, nj);
+          if (g > bestGain + 1e-9) {
+            bestGain = g;
+            best = nj;
+          }
+        }
+      s.add(k, best);
+      if (best !== j) improved = true;
+    });
+    if (fillGaps(p, s, at, indexOf, deadline)) improved = true;
+    if (!improved) break;
+  }
+  return s.choice.slice();
+}
+
+/**
+ * Passe ciblée sur les trous : pour chaque cellule non servie, chaque drone essaie le plus petit
+ * déplacement qui la met juste à portée (vers le trou, jusqu'à un rayon moins une cellule).
+ * Comble les trous enclavés que la recherche locale à 300 m ne voit pas.
+ */
+function fillGaps(
+  p: Problem,
+  s: State,
+  at: Map<string, Cell>,
+  indexOf: (k: number, c: Cell) => number,
+  deadline: number,
+): boolean {
+  const { grid } = p.ctx;
+  let improved = false;
+  for (const h of grid.cells) {
+    if (Date.now() > deadline) break;
+    if (p.weights[h.id]! <= 0 || s.count[h.id]! > 0) continue;
+    p.usable.forEach((u, k) => {
+      const j = s.choice[k]!;
+      const here = j >= 0 ? u.candidateCells[j] : undefined;
+      if (!here || u.fixed || s.count[h.id]! > 0) return;
+      const d = distanceM(here.center, h.center);
+      if (d <= u.radius) return;
+      // Point à (rayon − 1 cellule) du trou, sur le segment trou → position actuelle.
+      const f = (u.radius - grid.cellSizeM) / d;
+      const c = at.get(
+        `${Math.round(h.row + (here.row - h.row) * f)},${Math.round(h.col + (here.col - h.col) * f)}`,
+      );
+      if (!c || c.forbidden) return;
+      if (u.res.allowedArea && !booleanPointInPolygon(c.center, u.res.allowedArea)) return;
+      const nj = indexOf(k, c);
+      s.remove(k);
+      if (s.gainAt(k, nj) > s.gainAt(k, j) + 1e-9) {
+        s.add(k, nj);
+        improved = true;
+      } else s.add(k, j);
+    });
+  }
+  return improved;
+}
+
+/**
  * Couverture maximale pondérée (MCLP) par recuit simulé, démarré d'une construction gloutonne.
  * Sert de solveur rapide et de secours si l'ILP (ilp.ts) dépasse le temps imparti.
  */
 export function greedySolve(ctx: SolveContext): SolveResult {
   const problem = buildProblem(ctx);
   if (!isProblem(problem)) return problem;
-  const choice = anneal(problem, { seed: seedOf(ctx) });
+  const choice = refine(problem, anneal(problem, { seed: seedOf(ctx) }));
   return toResult(problem, choice);
 }

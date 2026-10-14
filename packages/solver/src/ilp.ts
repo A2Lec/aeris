@@ -21,7 +21,7 @@
 import highsLoader, { type Highs } from 'highs';
 import { meetsRequirement, type SolveContext, type SolveResult } from '@aeris/shared';
 import { distanceM } from '@aeris/geo';
-import { anneal, seedOf } from './greedy';
+import { anneal, refine, seedOf } from './greedy';
 import {
   buildProblem,
   candidateCost,
@@ -32,8 +32,11 @@ import {
   type Problem,
 } from './problem';
 
-/** Temps total visé pour l'ILP (le contrat exige < 5 s, construction et recuit compris). */
-const ILP_TIME_LIMIT_S = 3;
+/** Temps max accordé à HiGHS lui-même. */
+const ILP_TIME_LIMIT_S = 2.5;
+/** Budget total de l'appel (le contrat exige < 5 s) et marge gardée pour l'affinage final. */
+const TOTAL_BUDGET_S = 3.6;
+const REFINE_MARGIN_S = 0.5;
 /** Écart d'optimalité accepté : au-delà, gagner 0,5 % ne vaut pas le temps de preuve. */
 const MIP_REL_GAP = 0.005;
 /** Taille des blocs agrégés et espacement des candidats de l'ILP, en mètres. */
@@ -169,7 +172,8 @@ export async function ilpSolve(ctx: SolveContext): Promise<SolveResult> {
     const built = buildLp(problem);
     if (!built) return toResult(problem, fallback, ['Solveur : recuit simulé (modèle ILP vide)']);
     const highs = await loadHighs();
-    const remaining = ILP_TIME_LIMIT_S - (Date.now() - t0) / 1000;
+    const elapsed = (Date.now() - t0) / 1000;
+    const remaining = Math.min(ILP_TIME_LIMIT_S, TOTAL_BUDGET_S - REFINE_MARGIN_S - elapsed);
     if (remaining < 0.3) {
       return toResult(problem, fallback, ['Solveur : recuit simulé (pas de temps pour l’ILP)']);
     }
@@ -206,5 +210,5 @@ export async function ilpSolve(ctx: SolveContext): Promise<SolveResult> {
   } catch (e) {
     note = `Solveur : recuit simulé (ILP en échec : ${e instanceof Error ? e.message : String(e)})`;
   }
-  return toResult(problem, best, [note]);
+  return toResult(problem, refine(problem, best), [note]);
 }

@@ -128,6 +128,51 @@ describe('redondance voulue par zone (cell.redundancy)', () => {
   }, 10_000);
 });
 
+describe('trous', () => {
+  it('ne laisse aucun trou quand les drones suffisent largement', () => {
+    const tp2 = mission.resources.find(
+      (r) => mission.pilots.find((p) => p.id === r.pilotId)!.level === 'TP2',
+    )!;
+    const extra = [0, 1, 2].map((i) => ({
+      ...tp2,
+      id: `x${i}`,
+      fixedPosition: undefined,
+      allowedArea: undefined,
+      available: true,
+    }));
+    const big = {
+      ...mission,
+      maxDrones: 9,
+      resources: [...mission.resources.map((r) => ({ ...r, available: true })), ...extra],
+    };
+    const grid = buildGrid(big, 0);
+    const res = greedySolve({
+      mission: big,
+      catalog: drones,
+      rules: pilotRules,
+      grid,
+      phase: 0,
+      strategy: 'couverture_globale',
+    });
+    expect(computeMetrics(grid, res.assignments).coverage).toBe(1);
+    expect(res.diagnostics.some((d) => d.includes('trous'))).toBe(false);
+  }, 20_000);
+
+  it('signale les trous restants', () => {
+    const grid = buildGrid(mission, 0);
+    const res = greedySolve({
+      mission,
+      catalog: drones,
+      rules: pilotRules,
+      grid,
+      phase: 0,
+      strategy: 'couverture_globale',
+    });
+    const m = computeMetrics(grid, res.assignments);
+    if (m.coverage < 1) expect(res.diagnostics.some((d) => d.includes('ha de trous'))).toBe(true);
+  });
+});
+
 describe('bonus des drones en zone prioritaire', () => {
   it('ne bonifie que les candidats placés dans la zone prioritaire', () => {
     const grid = buildGrid(mission, 0);
@@ -147,6 +192,7 @@ describe('bonus des drones en zone prioritaire', () => {
         const inside = cov.length > 0 && prio / cov.length >= PRIORITY_DRONE_MIN_SHARE;
         expect(u.priorityBonus[j]).toBeCloseTo(inside ? expected : 0);
       });
-    expect(p.usable.some((u) => u.priorityBonus.some((b) => b > 0))).toBe(true);
+    if (PRIORITY_DRONE_BONUS > 0)
+      expect(p.usable.some((u) => u.priorityBonus.some((b) => b > 0))).toBe(true);
   });
 });

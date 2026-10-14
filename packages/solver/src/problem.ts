@@ -30,19 +30,32 @@ import { distanceM } from '@aeris/geo';
 export const CANDIDATE_SPACING_M = 300;
 /** Part du gain d'un disque complet perdue quand un couple se déplace d'un rayon (stabilité). */
 const STABILITY_PENALTY = 0.15;
-/** Pénalité de chevauchement, relative au poids de la cellule couverte deux fois. */
+/**
+ * Tout déplacement coûte au moins cette part de la pénalité maximale : en conduite, bouger
+ * un drone l'interrompt, même pour 100 m. Évite les micro-ajustements à chaque recalcul.
+ */
+const MIN_MOVE_SHARE = 0.25;
+/**
+ * Aversion aux trous : un hectare laissé sans drone coûte autant que GAP_AVERSION hectares
+ * de chevauchement superflu. Plus elle est forte, plus le solveur accepte de faire se
+ * recouvrir les disques pour boucher les trous. « Économie de moyens » garde une pénalité
+ * de chevauchement plus forte : c'est elle qui justifie de ne pas engager un drone de plus.
+ */
+export const GAP_AVERSION = 50;
 const OVERLAP_PENALTY: Record<Strategy, number> = {
-  couverture_globale: 0.1,
-  priorite: 0.05,
+  couverture_globale: 1 / GAP_AVERSION,
+  priorite: 1 / GAP_AVERSION,
   economie_moyens: 0.1,
 };
 /**
  * Bonus pour chaque couple engagé « dans » la zone prioritaire, en % du poids total de la grille.
  * Favorise l'emploi d'un plus grand nombre de drones sur les zones prioritaires (redondance,
  * relève, angles de vue). 0 = désactivé ; plafonné à PRIORITY_DRONE_BONUS_MAX.
+ * Désactivé par défaut : à 2 %, il attirait les drones vers les zones prioritaires au prix de
+ * trous ailleurs (démo : 135 ha de trous au lieu de 90 ; 25 ha au lieu de 0 avec 9 drones).
  */
 export const PRIORITY_DRONE_BONUS_MAX = 10;
-export const PRIORITY_DRONE_BONUS = 2;
+export const PRIORITY_DRONE_BONUS = 0;
 /** Un couple est « dans » la zone prioritaire si au moins cette part de ce qu'il couvre y est. */
 export const PRIORITY_DRONE_MIN_SHARE = 0.2;
 
@@ -67,6 +80,12 @@ export interface Usable {
   prevIndex: number;
   /** Pour chaque candidat : bonus s'il place le couple dans la zone prioritaire (0 sinon). */
   priorityBonus: Float64Array;
+  /** Cellules que le couple peut servir (poids > 0, capacités satisfaites). */
+  useful: Cell[];
+  /** Position dans la solution précédente. */
+  prev?: [number, number];
+  /** Poids d'un disque moyen (échelle du coût de déplacement). */
+  discWeight: number;
 }
 
 export interface Problem {
@@ -85,6 +104,42 @@ export interface Problem {
 function cellWeight(cell: Cell, strategy: Strategy): number {
   if (cell.forbidden) return 0;
   return strategy === 'couverture_globale' ? 1 : (PRIORITY_WEIGHTS[cell.priorityLevel] ?? 1);
+}
+
+/** Couverture, coût de déplacement et bonus prioritaire d'une position pour un couple. */
+function candidateData(cells: Cell[], u: Usable, pos: [number, number], totalWeight: number) {
+  // Pré-filtre par boîte englobante (marge de 10 %) avant la distance exacte.
+  const dLat = (u.radius / 111_000) * 1.1;
+  const dLng = dLat / Math.cos((pos[1] * Math.PI) / 180);
+  const ids: number[] = [];
+  let prio = 0;
+  for (const c of u.useful) {
+    if (Math.abs(c.center[1] - pos[1]) > dLat || Math.abs(c.center[0] - pos[0]) > dLng) continue;
+    if (distanceM(pos, c.center) > u.radius) continue;
+    ids.push(c.id);
+    if (cells[c.id]!.priorityLevel > 0) prio++;
+  }
+  const shift = u.prev ? distanceM(u.prev, pos) : 0;
+  const moveCost =
+    shift > 1
+      ? STABILITY_PENALTY * u.discWeight * Math.max(MIN_MOVE_SHARE, Math.min(shift / u.radius, 1))
+      : 0;
+  const bonusValue =
+    (Math.min(Math.max(PRIORITY_DRONE_BONUS, 0), PRIORITY_DRONE_BONUS_MAX) / 100) * totalWeight;
+  const inPriority = ids.length > 0 && prio / ids.length >= PRIORITY_DRONE_MIN_SHARE;
+  return { covers: Int32Array.from(ids), moveCost, bonus: inPriority ? bonusValue : 0 };
+}
+
+/** Ajoute une position candidate au couple k (affinage) ; renvoie son indice. */
+export function addCandidate(p: Problem, k: number, cell: Cell): number {
+  const u = p.usable[k]!;
+  const d = candidateData(p.ctx.grid.cells, u, cell.center, p.totalWeight);
+  u.candidates.push(cell.center);
+  u.candidateCells.push(cell);
+  u.covers.push(d.covers);
+  u.moveCost = Float64Array.from([...u.moveCost, d.moveCost]);
+  u.priorityBonus = Float64Array.from([...u.priorityBonus, d.bonus]);
+  return u.candidates.length - 1;
 }
 
 /** Construit le modèle, ou renvoie directement un résultat « infaisable » expliqué. */
@@ -137,60 +192,41 @@ export function buildProblem(ctx: SolveContext): Problem | SolveResult {
       }
     }
 
-    const useful = grid.cells.filter(
-      (c) => weights[c.id]! > 0 && meetsRequirement(model, c.requires),
-    );
-    // Pré-filtre par boîte englobante (marge de 10 %) avant la distance exacte.
-    const dLat = (radius / 111_000) * 1.1;
-    const covers = candidates.map((p) => {
-      const dLng = dLat / Math.cos((p[1] * Math.PI) / 180);
-      const ids: number[] = [];
-      for (const c of useful) {
-        if (Math.abs(c.center[1] - p[1]) > dLat || Math.abs(c.center[0] - p[0]) > dLng) continue;
-        if (distanceM(p, c.center) <= radius) ids.push(c.id);
-      }
-      return Int32Array.from(ids);
-    });
-    // Déplacer un couple d'un rayon complet coûte STABILITY_PENALTY d'un disque moyen.
     const prev = prevByRes.get(res.id)?.position.coordinates as [number, number] | undefined;
-    const discWeight = (Math.PI * radius * radius * meanWeight) / grid.cellAreaM2;
-    const moveCost = Float64Array.from(candidates, (p) =>
-      prev && !res.fixedPosition
-        ? STABILITY_PENALTY * discWeight * Math.min(distanceM(prev, p) / radius, 1)
-        : 0,
-    );
-    let prevIndex = -1;
-    if (prev && !res.fixedPosition) {
-      let bestD = Infinity;
-      candidates.forEach((c, j) => {
-        const d = distanceM(prev, c);
-        if (d < bestD) {
-          bestD = d;
-          prevIndex = j;
-        }
-      });
-    }
-    const bonus =
-      (Math.min(Math.max(PRIORITY_DRONE_BONUS, 0), PRIORITY_DRONE_BONUS_MAX) / 100) * totalWeight;
-    const priorityBonus = Float64Array.from(covers, (cov) => {
-      if (bonus === 0 || cov.length === 0) return 0;
-      let prio = 0;
-      for (const i of cov) if (grid.cells[i]!.priorityLevel > 0) prio++;
-      return prio / cov.length >= PRIORITY_DRONE_MIN_SHARE ? bonus : 0;
-    });
-    usable.push({
+    const u: Usable = {
       res,
       level: pilot.level,
       radius,
       model,
       fixed: !!res.fixedPosition,
-      candidates,
-      candidateCells,
-      covers,
-      moveCost,
-      prevIndex,
-      priorityBonus,
-    });
+      candidates: [],
+      candidateCells: [],
+      covers: [],
+      moveCost: new Float64Array(0),
+      prevIndex: -1,
+      priorityBonus: new Float64Array(0),
+      useful: grid.cells.filter((c) => weights[c.id]! > 0 && meetsRequirement(model, c.requires)),
+      prev: res.fixedPosition ? undefined : prev,
+      // Déplacer un couple d'un rayon complet coûte STABILITY_PENALTY d'un disque moyen.
+      discWeight: (Math.PI * radius * radius * meanWeight) / grid.cellAreaM2,
+    };
+    const data = candidates.map((pos) => candidateData(grid.cells, u, pos, totalWeight));
+    u.candidates = candidates;
+    u.candidateCells = candidateCells;
+    u.covers = data.map((d) => d.covers);
+    u.moveCost = Float64Array.from(data, (d) => d.moveCost);
+    u.priorityBonus = Float64Array.from(data, (d) => d.bonus);
+    if (u.prev) {
+      let bestD = Infinity;
+      candidates.forEach((c, j) => {
+        const d = distanceM(u.prev!, c);
+        if (d < bestD) {
+          bestD = d;
+          u.prevIndex = j;
+        }
+      });
+    }
+    usable.push(u);
   }
 
   if (mission.maxDrones <= 0) {
@@ -305,6 +341,25 @@ export function toResult(problem: Problem, choice: Int32Array, extra: string[] =
     });
   });
 
+  const ha = (cells: number) => Math.round((cells * grid.cellAreaM2) / 1e4);
+  const coverable = grid.cells.filter((c) => !c.forbidden).length;
+  const gaps = grid.cells.filter((c) => !c.forbidden && !covered[c.id]).length;
+  if (gaps > 0) {
+    diagnostics.push(
+      `${ha(gaps)} ha de trous (${((100 * gaps) / coverable).toFixed(1)} % de la zone)`,
+    );
+    // Borne physique : même sans aucun chevauchement, les disques ne suffisent pas.
+    const maxDiscs = usable
+      .map((u) => Math.PI * u.radius * u.radius)
+      .sort((x, y) => y - x)
+      .slice(0, problem.maxEngaged)
+      .reduce((t, x) => t + x, 0);
+    if (maxDiscs < coverable * grid.cellAreaM2) {
+      diagnostics.push(
+        `Couverture complète impossible : ${Math.min(usable.length, problem.maxEngaged)} drone(s) couvrent au plus ${Math.round(maxDiscs / 1e4)} ha pour ${ha(coverable)} ha à couvrir`,
+      );
+    }
+  }
   const unmetPriority = grid.cells.filter(
     (c) => c.priorityLevel > 0 && !c.forbidden && !covered[c.id],
   ).length;
