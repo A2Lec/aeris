@@ -1,7 +1,11 @@
 import type { LiveState, MissionEvent, MissionState } from '@aeris/shared';
 import { metricsFor } from './pipeline';
 
-/** Applique un événement de conduite à l'état de la mission, puis recalcule les métriques. */
+/**
+ * Applique un événement de conduite à l'état de la mission, puis recalcule les métriques.
+ * Tout événement change la situation : un recalcul en attente, calculé avant, devient périmé
+ * (il pourrait réengager un TP qui vient de tomber). On le retire ; l'opérateur relance.
+ */
 export function applyEvent(st: MissionState, live: LiveState, ev: MissionEvent): void {
   const { mission } = st;
   const setAvailable = (id: string, available: boolean) => {
@@ -42,5 +46,6 @@ export function applyEvent(st: MissionState, live: LiveState, ev: MissionEvent):
   }
 
   live.events.push({ at: new Date().toISOString(), event: ev });
+  live.pendingRecompute = undefined;
   live.metrics = metricsFor(mission, live.phase, live.assignments);
 }

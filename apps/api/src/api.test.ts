@@ -148,6 +148,31 @@ describe('Scénario de démo complet', () => {
     expect(accepted.assignments.every((a) => a.phase === 0 && a.resourceId !== 'r1')).toBe(true);
   }, 60_000);
 
+  it('un événement survenu après le recalcul le rend périmé : pas de réengagement', async () => {
+    const recomputed = await call(Proposal, 'POST', API.recompute(id), {});
+    const victim = recomputed.assignments.find((a) => a.phase === 0)!.resourceId;
+    const after = await call(LiveState, 'POST', API.events(id), {
+      type: 'resource_unavailable',
+      resourceId: victim,
+    });
+    expect(after.pendingRecompute).toBeUndefined();
+    const res = await app.inject({
+      method: 'POST',
+      url: API.acceptRecompute(id),
+      payload: { proposalId: recomputed.id },
+    });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().message).toMatch(/périmé/);
+
+    // Le recalcul suivant n'engage pas le TP tombé.
+    const again = await call(Proposal, 'POST', API.recompute(id), {});
+    expect(again.assignments.some((a) => a.resourceId === victim)).toBe(false);
+    const applied = await call(LiveState, 'POST', API.acceptRecompute(id), {
+      proposalId: again.id,
+    });
+    expect(applied.assignments.some((a) => a.resourceId === victim)).toBe(false);
+  }, 60_000);
+
   it('nouvelle zone prioritaire puis changement de phase', async () => {
     const zone = { ...input.priorityZones[0], id: 'z-live', phases: undefined };
     await call(LiveState, 'POST', API.events(id), { type: 'priority_zone_added', zone });
