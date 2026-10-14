@@ -135,6 +135,8 @@ describe('Scénario de démo complet', () => {
 
     const recomputed = await call(Proposal, 'POST', API.recompute(id), {});
     expect(recomputed.assignments.some((a) => a.resourceId === 'r1')).toBe(false);
+    expect(recomputed.stability?.phase).toBe(0);
+    expect(recomputed.stability?.summary.length).toBeGreaterThan(0);
     const accepted = await call(LiveState, 'POST', API.acceptRecompute(id), {
       proposalId: recomputed.id,
     });

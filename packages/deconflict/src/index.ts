@@ -1,4 +1,10 @@
-import type { Assignment, Conflict, Deconflicter, Grid, Mission } from '@aeris/shared';
+import {
+  phaseWindow,
+  type Assignment,
+  type Conflict,
+  type Deconflicter,
+  type Grid,
+} from '@aeris/shared';
 import { distanceM } from '@aeris/geo';
 
 /** Hauteur par défaut d'une tranche d'altitude attribuée à un couple (20 m). */
@@ -69,31 +75,13 @@ export function detectConflicts(assignments: Assignment[]): Conflict[] {
   return out;
 }
 
-/** Détermine la fenêtre temporelle de référence d'une phase. */
-function getPhaseTimeWindow(mission: Mission, phase: number): { start: string; end: string } {
-  if (mission.period) {
-    const startMs = new Date(mission.period.start).getTime();
-    const endMs = new Date(mission.period.end).getTime();
-    if (endMs > startMs) {
-      const phaseDuration = (endMs - startMs) / Math.max(1, mission.phaseCount);
-      return {
-        start: new Date(startMs + phase * phaseDuration).toISOString(),
-        end: new Date(startMs + (phase + 1) * phaseDuration).toISOString(),
-      };
-    }
-  }
-  const baseMs = new Date(Date.UTC(2026, 9, 14, 8 + phase * 2, 0, 0)).getTime();
-  return {
-    start: new Date(baseMs).toISOString(),
-    end: new Date(baseMs + 2 * 3600 * 1000).toISOString(),
-  };
-}
-
 /** Découpe la fenêtre de la phase en créneaux temporels équi-répartis. */
 function getPhaseSlots(
-  window: { start: string; end: string },
+  window: { start: string; end: string } | undefined,
   slotCount = DEFAULT_SLOTS_PER_PHASE,
 ): Array<{ start: string; end: string }> {
+  // Sans période d'arrêté, pas de créneau horaire : on n'invente pas de date.
+  if (!window) return [];
   const startMs = new Date(window.start).getTime();
   const endMs = new Date(window.end).getTime();
   const duration = (endMs - startMs) / slotCount;
@@ -298,8 +286,7 @@ export const deconflict: Deconflicter = (assignments, ctx) => {
   viableCandidates.sort(candidatePriority);
 
   const finalPlaced: Assignment[] = [];
-  const phaseWindow = getPhaseTimeWindow(ctx.mission, ctx.phase);
-  const phaseSlots = getPhaseSlots(phaseWindow, DEFAULT_SLOTS_PER_PHASE);
+  const phaseSlots = getPhaseSlots(phaseWindow(ctx.mission, ctx.phase), DEFAULT_SLOTS_PER_PHASE);
 
   // 2. Traitement par composante connexe de chevauchement horizontal
   const components = findHorizontalComponents(viableCandidates);
@@ -347,15 +334,24 @@ export const deconflict: Deconflicter = (assignments, ctx) => {
     }
 
     // Niveau 3 : Séparation temporelle dynamique (répartition équilibrée sans renoncement prématuré)
-    diagnostics.push(
-      `Phase ${ctx.phase + 1} : saturation verticale détectée, activation de la séparation temporelle (créneaux horaires)`,
-    );
-
     const placedBySlot: PlacedEntry[][] = phaseSlots.map(() => []);
     const compPlaced: PlacedEntry[] = [];
     const compUnplaced: Candidate[] = [];
 
-    for (const c of comp) {
+    if (phaseSlots.length === 0) {
+      // Pas de période d'arrêté : on garde la séparation verticale obtenue, le reste renonce.
+      diagnostics.push(
+        `Phase ${ctx.phase + 1} : saturation verticale, séparation temporelle impossible sans période d'arrêté`,
+      );
+      compPlaced.push(...vertAttempt.placed);
+      compUnplaced.push(...vertAttempt.unplaced);
+    } else {
+      diagnostics.push(
+        `Phase ${ctx.phase + 1} : saturation verticale détectée, activation de la séparation temporelle (créneaux horaires)`,
+      );
+    }
+
+    for (const c of phaseSlots.length ? comp : []) {
       // Prioriser les créneaux ayant le moins de drones pour équilibrer la charge temporelle
       const slotIndices = phaseSlots
         .map((_, i) => i)

@@ -71,6 +71,11 @@ export const PriorityZone = z.object({
   requires: Requirement.default({}),
   /** Phases où la zone est active (index à partir de 0). Absent = toutes les phases. */
   phases: z.array(z.number().int().min(0)).optional(),
+  /**
+   * Nombre de drones voulus EN MÊME TEMPS sur la zone (chevauchement voulu, intérêt
+   * opérationnel). 1 = un seul suffit ; au-delà de r, le chevauchement est superflu.
+   */
+  redundancy: z.number().int().min(1).default(1),
 });
 export type PriorityZone = z.infer<typeof PriorityZone>;
 
@@ -142,11 +147,42 @@ export const Metrics = z.object({
   uncoveredAreaM2: z.number(),
   forbiddenAreaM2: z.number(),
   communes: z.array(z.string()).default([]),
+  /** Redondance (zones avec `redundancy` ≥ 2) — optionnels tant que @aeris/geo ne les calcule pas. */
+  /** Part de la surface couverte vue par 2 à r drones en même temps (chevauchement voulu). */
+  usefulOverlap: z.number().optional(),
+  /** Part de la surface couverte vue par plus de r drones en même temps (à réduire). */
+  superfluousOverlap: z.number().optional(),
+  /** Part des cellules exigeant r ≥ 2 qui ont r drones capables en même temps. */
+  redundancyMet: z.number().optional(),
 });
 export type Metrics = z.infer<typeof Metrics>;
 
 export const SolveStatus = z.enum(['optimal', 'faisable', 'infaisable']);
 export type SolveStatus = z.infer<typeof SolveStatus>;
+
+/** Ce qui change entre le dispositif en place et un recalcul, pour une phase. */
+export const Stability = z.object({
+  phase: z.number().int().min(0),
+  /** Couples déplacés de plus que le seuil, du plus grand déplacement au plus petit. */
+  moved: z.array(z.object({ resourceId: z.string(), shiftM: z.number() })),
+  totalShiftM: z.number(),
+  maxShiftM: z.number(),
+  /** Présents seulement après / seulement avant (renoncement, TP indisponible…). */
+  added: z.array(z.string()),
+  removed: z.array(z.string()),
+  /** Après − avant, en ratio (−0,11 = −11 points). */
+  deltas: z.object({
+    coverage: z.number(),
+    priorityCoverage: z.number(),
+    weightedCoverage: z.number(),
+    overlap: z.number(),
+  }),
+  /** Part de la zone couverte (avant ou après) dont le couple responsable change. 0..1. */
+  reassignedShare: z.number(),
+  /** Phrases courtes pour l'opérateur, par ordre d'importance. */
+  summary: z.array(z.string()),
+});
+export type Stability = z.infer<typeof Stability>;
 
 export const Proposal = z.object({
   id: z.string(),
@@ -158,6 +194,8 @@ export const Proposal = z.object({
   metricsByPhase: z.array(Metrics),
   diagnostics: z.array(z.string()),
   createdAt: z.string(),
+  /** Recalcul en conduite : écart avec le dispositif en place (phase courante). */
+  stability: Stability.optional(),
 });
 export type Proposal = z.infer<typeof Proposal>;
 
@@ -170,8 +208,20 @@ export const CoverageLayers = z.object({
   gaps: MultiPolygonGeom,
   /** Surface couverte par au moins deux drones. */
   overlap: MultiPolygonGeom,
+  /** Cellules exigeant r ≥ 2 drones qui en ont moins. */
+  redundancyMissing: MultiPolygonGeom.optional(),
+  /** Cellules vues par plus de r drones en même temps. */
+  superfluousOverlap: MultiPolygonGeom.optional(),
 });
 export type CoverageLayers = z.infer<typeof CoverageLayers>;
+
+/**
+ * Origine d'une météo : l'opérateur doit savoir s'il regarde la vraie météo.
+ * api = Open-Meteo à l'instant ; cache = dernière réponse connue (réseau coupé) ;
+ * repli = valeurs par défaut, AUCUNE donnée réelle ; manuel = saisie de l'opérateur.
+ */
+export const WeatherSource = z.enum(['api', 'cache', 'repli', 'manuel']);
+export type WeatherSource = z.infer<typeof WeatherSource>;
 
 export const Weather = z.object({
   windMs: z.number(),
@@ -180,5 +230,6 @@ export const Weather = z.object({
   temperatureC: z.number(),
   isDay: z.boolean(),
   fetchedAt: z.string(),
+  source: WeatherSource.default('api'),
 });
 export type Weather = z.infer<typeof Weather>;

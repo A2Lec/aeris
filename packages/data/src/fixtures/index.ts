@@ -1,4 +1,8 @@
+import type { z } from 'zod';
 import { Mission, type MissionInput, type PolygonGeom } from '@aeris/shared';
+
+/** Champs avec valeur par défaut facultatifs, comme dans un JSON de mission. */
+type Patch = Partial<z.input<typeof Mission>>;
 
 /**
  * Missions de test : la démo + des cas limites. Utilisées par les suites de contrat
@@ -27,7 +31,7 @@ function rect(minLng: number, minLat: number, maxLng: number, maxLat: number): P
 }
 
 export function buildTestMissions(demo: MissionInput): TestMission[] {
-  const make = (name: string, description: string, patch: Partial<MissionInput>): TestMission => ({
+  const make = (name: string, description: string, patch: Patch): TestMission => ({
     name,
     description,
     mission: Mission.parse({ ...JSON.parse(JSON.stringify(demo)), ...patch, id: `test-${name}` }),
@@ -104,6 +108,14 @@ export function buildTestMissions(demo: MissionInput): TestMission[] {
           geometry: rect(1.21, 43.66, 1.23, 43.67),
         },
       ],
+    }),
+    make('redondance', 'Lisière nord : 2 drones voulus en même temps ; hameau : 3 (impossible)', {
+      priorityZones: demo.priorityZones.map((z) =>
+        z.id === 'z1' ? { ...z, redundancy: 2 } : z.id === 'z2' ? { ...z, redundancy: 3 } : z,
+      ),
+    }),
+    make('sans-periode', "Pas de période d'arrêté : aucun créneau horaire ne doit être inventé", {
+      period: undefined,
     }),
     make('petite-zone', 'Zone minuscule, un seul couple TP1', {
       workArea: rect(1.22, 43.645, 1.226, 43.649),

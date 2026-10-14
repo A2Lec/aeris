@@ -60,69 +60,69 @@ const dispositif = () => [
 describe('mesurerStabilite', () => {
   it('dispositif inchangé : rien ne bouge', () => {
     const s = mesurerStabilite(grid, dispositif(), dispositif());
-    expect(s.deplaces).toEqual([]);
-    expect(s.ajoutes).toEqual([]);
-    expect(s.retires).toEqual([]);
-    expect(s.distanceTotaleM).toBe(0);
-    expect(s.cellulesReattribuees).toBe(0);
-    expect(Object.values(s.ecarts).every((x) => x === 0)).toBe(true);
-    expect(s.resume).toContain('Aucun couple déplacé');
+    expect(s.moved).toEqual([]);
+    expect(s.added).toEqual([]);
+    expect(s.removed).toEqual([]);
+    expect(s.totalShiftM).toBe(0);
+    expect(s.reassignedShare).toBe(0);
+    expect(Object.values(s.deltas).every((x) => x === 0)).toBe(true);
+    expect(s.summary).toContain('Aucun couple déplacé');
   });
 
   it("l'ordre des affectations ne change rien", () => {
     const s = mesurerStabilite(grid, dispositif(), dispositif().reverse());
-    expect(s.cellulesReattribuees).toBe(0);
+    expect(s.reassignedShare).toBe(0);
   });
 
   it('un couple retiré : couverture en baisse, ses cellules changent de responsable', () => {
     const s = mesurerStabilite(grid, dispositif(), dispositif().slice(0, 2));
-    expect(s.retires).toEqual(['r3']);
-    expect(s.ecarts.coverage).toBeLessThan(0);
-    expect(s.cellulesReattribuees).toBeGreaterThan(0);
-    expect(s.resume[0]).toContain('r3');
+    expect(s.removed).toEqual(['r3']);
+    expect(s.deltas.coverage).toBeLessThan(0);
+    expect(s.reassignedShare).toBeGreaterThan(0);
+    expect(s.summary[0]).toContain('r3');
   });
 
   it('retirer le couple de la zone prioritaire fait chuter la couverture prioritaire', () => {
     const s = mesurerStabilite(grid, dispositif(), dispositif().slice(1));
-    expect(s.ecarts.priorityCoverage).toBeLessThan(-0.5);
+    expect(s.deltas.priorityCoverage).toBeLessThan(-0.5);
   });
 
   it('un couple ajouté', () => {
     const s = mesurerStabilite(grid, dispositif().slice(0, 2), dispositif());
-    expect(s.ajoutes).toEqual(['r3']);
-    expect(s.ecarts.coverage).toBeGreaterThan(0);
+    expect(s.added).toEqual(['r3']);
+    expect(s.deltas.coverage).toBeGreaterThan(0);
   });
 
   it('un déplacement sous le seuil est ignoré, au-dessus il est compté et mesuré', () => {
     const petit = dispositif();
     petit[1] = makeAssignment('r2', nordDe(centre, 30), 1000);
-    expect(mesurerStabilite(grid, dispositif(), petit).deplaces).toEqual([]);
+    expect(mesurerStabilite(grid, dispositif(), petit).moved).toEqual([]);
 
     const grand = dispositif();
     grand[1] = makeAssignment('r2', nordDe(centre, 500), 1000);
     const s = mesurerStabilite(grid, dispositif(), grand);
-    expect(s.deplaces.map((d) => d.resourceId)).toEqual(['r2']);
-    expect(s.distanceMaxM).toBeCloseTo(500, 0);
-    expect(s.cellulesReattribuees).toBeGreaterThan(0);
+    expect(s.moved.map((d) => d.resourceId)).toEqual(['r2']);
+    expect(s.maxShiftM).toBeCloseTo(500, 0);
+    expect(s.reassignedShare).toBeGreaterThan(0);
   });
 
   it('le seuil se règle', () => {
     const grand = dispositif();
     grand[1] = makeAssignment('r2', nordDe(centre, 500), 1000);
-    const s = mesurerStabilite(grid, dispositif(), grand, { seuilDeplacementM: 1000 });
-    expect(s.deplaces).toEqual([]);
+    const s = mesurerStabilite(grid, dispositif(), grand, { minShiftM: 1000 });
+    expect(s.moved).toEqual([]);
   });
 
   it("les affectations d'une autre phase sont ignorées", () => {
     const autre = [...dispositif(), makeAssignment('r9', centre, 2000, 1)];
     const s = mesurerStabilite(grid, dispositif(), autre);
-    expect(s.ajoutes).toEqual([]);
-    expect(s.cellulesReattribuees).toBe(0);
+    expect(s.added).toEqual([]);
+    expect(s.reassignedShare).toBe(0);
   });
 
   it('sans aucun drone : tout à zéro, sans erreur', () => {
     const s = mesurerStabilite(grid, [], []);
-    expect(s.cellulesReattribuees).toBe(0);
-    expect(s.distanceMaxM).toBe(0);
+    expect(s.reassignedShare).toBe(0);
+    expect(s.maxShiftM).toBe(0);
   });
 });

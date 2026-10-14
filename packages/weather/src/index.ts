@@ -10,7 +10,10 @@ interface OpenMeteoCurrent {
   };
 }
 
-/** Météo par défaut de secours en mode hors-ligne pour la résilience en démo. */
+/**
+ * Météo par défaut de secours en mode hors-ligne pour la résilience en démo.
+ * `source: 'repli'` : ce n'est PAS une mesure, l'interface doit le signaler à l'opérateur.
+ */
 export const DEFAULT_OFFLINE_WEATHER: Weather = {
   windMs: 3.5,
   gustMs: 6.0,
@@ -18,6 +21,7 @@ export const DEFAULT_OFFLINE_WEATHER: Weather = {
   temperatureC: 18,
   isDay: true,
   fetchedAt: '2026-10-14T08:00:00.000Z',
+  source: 'repli',
 };
 
 /** Durée de validité du cache météo en mémoire (10 minutes). */
@@ -72,6 +76,7 @@ export const fetchWeather: WeatherProvider = async (lat, lng) => {
       temperatureC: current.temperature_2m,
       isDay: current.is_day === 1,
       fetchedAt: new Date().toISOString(),
+      source: 'api',
     };
     weatherCache.set(cacheKey, { weather, cachedAt: now });
     return weather;
@@ -81,19 +86,13 @@ export const fetchWeather: WeatherProvider = async (lat, lng) => {
       if (fallbackWeatherOverride === null) throw err;
       return fallbackWeatherOverride;
     }
-    // 2. Repli sur le cache de cette zone (même expiré)
+    // 2. Repli sur le cache de cette zone (même expiré) : `fetchedAt` garde l'heure de la mesure
     if (cached) {
-      return cached.weather;
+      return { ...cached.weather, source: 'cache' };
     }
-    // 3. Repli sur n'importe quelle entrée météo en cache
-    for (const entry of weatherCache.values()) {
-      return entry.weather;
-    }
-    // 4. Météo par défaut pour résister aux coupures réseau en démo
-    return {
-      ...DEFAULT_OFFLINE_WEATHER,
-      fetchedAt: new Date().toISOString(),
-    };
+    // 3. Météo par défaut pour résister aux coupures réseau en démo, marquée comme telle.
+    // (Pas de repli sur le cache d'une AUTRE zone : ce serait présenter la météo d'ailleurs.)
+    return DEFAULT_OFFLINE_WEATHER;
   }
 };
 
