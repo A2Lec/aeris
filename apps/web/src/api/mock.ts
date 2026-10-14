@@ -136,4 +136,15 @@ export const mockApi: Api = {
     publish();
     return delay(live);
   },
+  // Pas de réseau en mock : météo calme marquée comme valeur par défaut.
+  weather: () =>
+    delay({
+      windMs: 3.5,
+      gustMs: 6,
+      precipitationMm: 0,
+      temperatureC: 18,
+      isDay: true,
+      fetchedAt: new Date().toISOString(),
+      source: 'repli' as const,
+    }),
 };

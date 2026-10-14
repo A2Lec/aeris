@@ -10,6 +10,7 @@ import {
   type MissionStatus,
   type Proposal,
   type Strategy,
+  type Weather,
 } from '@aeris/shared';
 import { mockApi } from './mock';
 
@@ -49,6 +50,8 @@ const httpApi = {
   recompute: (id: string) => http<Proposal>('POST', API.recompute(id), {}),
   acceptRecompute: (id: string, proposalId: string) =>
     http<LiveState>('POST', API.acceptRecompute(id), { proposalId }),
+  /** Météo réelle (Open-Meteo via l'API, avec cache et repli hors ligne). */
+  weather: (lat: number, lng: number) => http<Weather>('GET', API.weather(lat, lng)),
 };
 
 export type Api = typeof httpApi;

@@ -4,6 +4,7 @@ import { useMissionStore } from '../../app/missionStore';
 import { CoupleCard } from '../../components/CoupleCard';
 import { useFocusStore } from '../../components/focus';
 import { describeEvent } from './events';
+import { METEO_PRESETS, centreZone, meteoDuPreset, modelesAuSol, seuilModele } from './meteo';
 import { useLiveStore } from './store';
 import { useLiveSocket } from './useLiveSocket';
 import './live.css';
@@ -99,27 +100,50 @@ export function LiveLeft() {
             Cliquez sur la carte pour placer la zone de priorité {zoneLevel}.
           </p>
         )}
-        <div className="actions">
-          <button
-            disabled={busy}
-            onClick={() =>
-              send({
-                type: 'weather_update',
-                weather: {
-                  windMs: 11,
-                  gustMs: 14,
-                  precipitationMm: 0.4,
-                  temperatureC: 12,
-                  isDay: true,
-                  fetchedAt: new Date().toISOString(),
-                  source: 'manuel',
-                },
-              })
-            }
-          >
-            Simuler un coup de vent
-          </button>
+        <div className="event-row meteo">
+          <span>Météo</span>
+          <div className="actions">
+            {METEO_PRESETS.map((p) => {
+              const auSol = modelesAuSol(catalog?.drones ?? [], p);
+              return (
+                <button
+                  key={p.id}
+                  disabled={busy}
+                  title={
+                    auSol.length
+                      ? `Au sol : ${auSol.map((m) => m.name.replace(/^DJI /, '')).join(', ')}`
+                      : 'Tous les drones peuvent voler'
+                  }
+                  onClick={() =>
+                    send({ type: 'weather_update', weather: meteoDuPreset(p, live.weather) })
+                  }
+                >
+                  {p.label}
+                </button>
+              );
+            })}
+            <button
+              disabled={busy}
+              title="Open-Meteo au centre de la zone de travail"
+              onClick={() =>
+                run(async () => {
+                  const [lng, lat] = centreZone(mission);
+                  const weather = await api.weather(lat, lng);
+                  await api.sendEvent(mission.id, { type: 'weather_update', weather });
+                  await refresh();
+                })
+              }
+            >
+              Météo réelle
+            </button>
+          </div>
         </div>
+        {catalog && (
+          <p className="hint">
+            Seuils : {catalog.drones.map(seuilModele).join(' · ')}. Le recalcul retire les drones
+            cloués au sol.
+          </p>
+        )}
       </section>
 
       <h3>Journal</h3>

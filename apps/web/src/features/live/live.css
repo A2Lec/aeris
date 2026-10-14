@@ -33,6 +33,14 @@
 .event-row .segmented button {
   padding: 3px 10px;
 }
+/* Météo : 4 boutons sous le libellé plutôt qu'à côté, pour tenir dans le panneau. */
+.event-row.meteo {
+  flex-direction: column;
+  align-items: stretch;
+}
+.event-row.meteo .actions {
+  margin-top: 6px;
+}
 .placing {
   color: var(--warn-text);
 }
