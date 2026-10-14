@@ -31,6 +31,8 @@ interface ConfigEditorStore {
   setupWorkArea?: PolygonGeom;
   zoneName: string;
   priorityLevel: 1 | 2 | 3;
+  /** Drones voulus simultanément sur la prochaine zone prioritaire tracée. */
+  priorityRedundancy: number;
   constraintKind: ConstraintKind;
   resourceId: string;
   setStep: (step?: WizardStep) => void;
@@ -45,6 +47,7 @@ interface ConfigEditorStore {
   setEditing: (editing: boolean) => void;
   setZoneName: (name: string) => void;
   setPriorityLevel: (level: 1 | 2 | 3) => void;
+  setPriorityRedundancy: (count: number) => void;
   setConstraintKind: (kind: ConstraintKind) => void;
   setResourceId: (id: string) => void;
 }
@@ -60,6 +63,7 @@ export const useConfigEditorStore = create<ConfigEditorStore>((set) => ({
   setupWorkArea: undefined,
   zoneName: '',
   priorityLevel: 1,
+  priorityRedundancy: 1,
   constraintKind: 'interdite',
   resourceId: '',
   setStep: (step) => set({ step, drawMode: 'idle', editing: false, zoneName: '' }),
@@ -74,6 +78,7 @@ export const useConfigEditorStore = create<ConfigEditorStore>((set) => ({
   setEditing: (editing) => set({ editing }),
   setZoneName: (zoneName) => set({ zoneName }),
   setPriorityLevel: (priorityLevel) => set({ priorityLevel }),
+  setPriorityRedundancy: (priorityRedundancy) => set({ priorityRedundancy }),
   setConstraintKind: (constraintKind) => set({ constraintKind }),
   setResourceId: (resourceId) => set({ resourceId }),
 }));

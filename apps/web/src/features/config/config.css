@@ -90,3 +90,21 @@
   margin: 0;
   accent-color: var(--primary);
 }
+
+/* Drones voulus sur une zone : − / valeur / + */
+.stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.stepper output {
+  min-width: 1.5em;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.zone-list li:has(.stepper) {
+  flex-wrap: wrap;
+}
+.zone-list li .notice {
+  flex-basis: 100%;
+}
