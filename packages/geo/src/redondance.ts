@@ -13,11 +13,14 @@
 import { booleanPointInPolygon } from '@turf/turf';
 import {
   PRIORITY_WEIGHTS,
+  meetsRequirement,
   type Assignment,
+  type DroneModel,
   type Grid,
   type Mission,
   type MetricsOptions,
   type MultiPolygonGeom,
+  type Requirement,
 } from '@aeris/shared';
 import { fusionner } from './coverage';
 import { zoneActive } from './grid';
@@ -186,4 +189,57 @@ export function couchesRedondance(
     ),
     superfluousOverlap: fusionner(grid, index, (id) => ouverte(id) && tous[id] > r(id)),
   };
+}
+
+/** Capacités exigées par une zone, en clair (« caméra thermique, zoom ×50 »). */
+function capacitesEnClair(req: Requirement): string {
+  const parties = [
+    req.thermal ? 'caméra thermique' : '',
+    req.night ? 'vol de nuit' : '',
+    req.minZoomX ? `zoom ×${req.minZoomX}` : '',
+  ].filter(Boolean);
+  return parties.join(', ');
+}
+
+/**
+ * Contrôle de saisie : une redondance demandée est-elle possible avec cette mission ?
+ * Messages bloquants, vide si tout est possible. Vérifie le plafond de l'arrêté et le nombre
+ * de couples disponibles dont le drone a les capacités exigées par la zone. Ne vérifie pas
+ * l'étagement en hauteur ni les zones limites des couples : c'est au solveur de le dire.
+ */
+export function verifierRedondance(
+  mission: Mission,
+  catalog: DroneModel[],
+  redondances: RedondanceParZone,
+): string[] {
+  const messages: string[] = [];
+  const modeles = new Map(catalog.map((m) => [m.id, m]));
+  for (const zone of mission.priorityZones) {
+    const r = redondances[zone.id] ?? 1;
+    if (!Number.isInteger(r) || r < 1) {
+      messages.push(
+        `${zone.name} : nombre de drones voulus invalide (${r}), il faut un entier ≥ 1.`,
+      );
+      continue;
+    }
+    if (r === 1) continue;
+    if (r > mission.maxDrones) {
+      messages.push(
+        `${zone.name} : ${r} drones voulus, l'arrêté en autorise ${mission.maxDrones} au total.`,
+      );
+    }
+    const capables = mission.resources.filter((res) => {
+      const modele = modeles.get(res.droneModelId);
+      return res.available && !!modele && meetsRequirement(modele, zone.requires);
+    });
+    if (capables.length < r) {
+      const exigences = capacitesEnClair(zone.requires);
+      const liste = capables.length ? ` (${capables.map((c) => c.id).join(', ')})` : '';
+      messages.push(
+        `${zone.name} : ${r} drones voulus${exigences ? ` avec ${exigences}` : ''}, ` +
+          `la mission en a ${capables.length} disponible(s)${liste}.`,
+      );
+    }
+  }
+  return messages;
 }
