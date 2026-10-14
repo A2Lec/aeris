@@ -6,3 +6,5 @@ export * from './voisinage';
 export * from './stabilite';
 export * from './redondance';
 export * from './presence';
+export * from './parCouple';
+export * from './zones';
