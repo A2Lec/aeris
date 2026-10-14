@@ -115,6 +115,7 @@ export const mockApi: Api = {
       live.assignments = (p?.assignments ?? []).filter((a) => a.phase === live.phase);
     }
     live.events.push({ at: new Date().toISOString(), event });
+    live.pendingRecompute = undefined; // comme l'API : un événement périme le recalcul
     publish();
     return delay(live);
   },
@@ -127,7 +128,9 @@ export const mockApi: Api = {
   acceptRecompute: (_id, proposalId) => {
     const live = liveOrThrow();
     if (live.pendingRecompute?.id !== proposalId)
-      return Promise.reject(new Error('Recalcul introuvable'));
+      return Promise.reject(
+        new Error('Recalcul périmé : la situation a changé, relancez le calcul'),
+      );
     live.assignments = live.pendingRecompute.assignments.filter((a) => a.phase === live.phase);
     live.pendingRecompute = undefined;
     publish();
