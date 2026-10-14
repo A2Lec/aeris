@@ -1,0 +1,17 @@
+{
+  "name": "@aeris/data",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p . --noEmit",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@aeris/shared": "workspace:*",
+    "zod": "^4.6.7"
+  }
+}

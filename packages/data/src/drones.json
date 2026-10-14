@@ -1,0 +1,38 @@
+[
+  {
+    "id": "matrice-4t",
+    "name": "DJI Matrice 4T",
+    "enduranceMin": 49,
+    "maxWindMs": 12,
+    "rainOk": true,
+    "minTempC": -20,
+    "maxTempC": 50,
+    "zoomX": 112,
+    "thermal": true,
+    "night": true
+  },
+  {
+    "id": "mavic-3e",
+    "name": "DJI Mavic 3 Enterprise",
+    "enduranceMin": 45,
+    "maxWindMs": 12,
+    "rainOk": false,
+    "minTempC": -10,
+    "maxTempC": 40,
+    "zoomX": 56,
+    "thermal": false,
+    "night": false
+  },
+  {
+    "id": "mini-5",
+    "name": "DJI Mini 5",
+    "enduranceMin": 36,
+    "maxWindMs": 10.7,
+    "rainOk": false,
+    "minTempC": -10,
+    "maxTempC": 40,
+    "zoomX": 4,
+    "thermal": false,
+    "night": false
+  }
+]

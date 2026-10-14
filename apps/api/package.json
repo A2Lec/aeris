@@ -1,0 +1,24 @@
+{
+  "name": "@aeris/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "start": "tsx src/server.ts",
+    "typecheck": "tsc -p . --noEmit",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@aeris/data": "workspace:*",
+    "@aeris/deconflict": "workspace:*",
+    "@aeris/geo": "workspace:*",
+    "@aeris/shared": "workspace:*",
+    "@aeris/solver": "workspace:*",
+    "@aeris/weather": "workspace:*",
+    "@fastify/cors": "^11.3.1",
+    "@fastify/websocket": "^11.3.4",
+    "fastify": "^5.12.7",
+    "zod": "^4.6.7"
+  }
+}

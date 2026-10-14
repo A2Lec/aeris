@@ -1,0 +1,14 @@
+# Remplacer @p1 … @p6 par les identifiants GitLab/GitHub de l'équipe.
+*                               @p1
+/packages/shared/               @p1
+/apps/api/                      @p1
+/packages/solver/               @p2
+/packages/geo/                  @p3
+/packages/data/                 @p3
+/packages/deconflict/           @p4
+/packages/weather/              @p4
+/apps/web/src/map/              @p5
+/apps/web/src/features/config/  @p5
+/apps/web/src/features/scenarios/ @p6
+/apps/web/src/features/live/    @p6
+/apps/web/src/components/       @p6

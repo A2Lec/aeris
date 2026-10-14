@@ -1,0 +1,14 @@
+[
+  {
+    "level": "TP1",
+    "scenario": "2.2 hors vue",
+    "rangeM": 1000,
+    "maxHeightM": { "rural": 50, "urbain": 80 }
+  },
+  {
+    "level": "TP2",
+    "scenario": "2.2 hors vue",
+    "rangeM": 2000,
+    "maxHeightM": { "rural": 120, "urbain": 120 }
+  }
+]
