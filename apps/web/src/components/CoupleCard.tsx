@@ -36,7 +36,7 @@ export function CoupleCard({
     <article className={`card couple ${focused ? 'focused' : ''}`}>
       <header>
         <div>
-          <b>{a.resourceId}</b> {pilot?.name}
+          <b title={a.resourceId}>{pilot?.name ?? 'Télépilote inconnu'}</b>
           <small>{drone?.name ?? res?.droneModelId}</small>
         </div>
         {pilot && (

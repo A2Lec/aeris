@@ -2,6 +2,8 @@ import { Fragment } from 'react';
 import { Circle, Marker, Tooltip } from 'react-leaflet';
 import L from 'leaflet';
 import type { Assignment, Mission } from '@aeris/shared';
+import { useMissionStore } from '../../app/missionStore';
+import { resourceLabel } from '../../features/resourceLabel';
 import { LEVEL_COLORS } from '../colors';
 import { SEMANTIC } from '../../theme';
 
@@ -18,6 +20,7 @@ interface Props {
 
 /** Un cercle de portée + un marqueur par couple, coloré selon le niveau du télépilote. */
 export function AssignmentsLayer({ mission, assignments, ghost, focusedId, onMove }: Props) {
+  const catalog = useMissionStore((state) => state.catalog);
   return (
     <>
       {assignments.map((a) => {
@@ -28,7 +31,7 @@ export function AssignmentsLayer({ mission, assignments, ghost, focusedId, onMov
         const [lng, lat] = a.position.coordinates;
         const icon = L.divIcon({
           className: 'drone-icon',
-          html: `<span style="background:${color}${focused ? `;outline:3px solid ${SEMANTIC.warn}` : ''}">${a.resourceId}</span>`,
+          html: `<span style="background:${color}${focused ? `;outline:3px solid ${SEMANTIC.warn}` : ''}">C${mission.resources.findIndex((resource) => resource.id === a.resourceId) + 1}</span>`,
           iconSize: [34, 20],
         });
         return (
@@ -56,7 +59,7 @@ export function AssignmentsLayer({ mission, assignments, ghost, focusedId, onMov
                 }}
               >
                 <Tooltip>
-                  {a.resourceId}, {pilot?.name} ({pilot?.level}), {res?.droneModelId}
+                  {resourceLabel(mission, a.resourceId, catalog)}
                   <br />
                   Rayon {a.radiusM / 1000} km, {a.altitude.minM} à {a.altitude.maxM} m/sol
                 </Tooltip>

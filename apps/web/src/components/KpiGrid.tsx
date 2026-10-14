@@ -1,4 +1,4 @@
-import type { Metrics, Stability } from '@aeris/shared';
+import type { Metrics, Stability, ZoneCoverage } from '@aeris/shared';
 import { hectares, pct } from './format';
 import './components.css';
 
@@ -42,6 +42,61 @@ function Kpi({
 }
 
 const points = (a: number, b: number) => Math.round((a - b) * 100);
+
+/**
+ * Redondance à afficher seulement si une zone exige plusieurs drones : sinon redundancyMet vaut
+ * 1 par convention et n'apprend rien. Exigée = pas entièrement atteinte, ou chevauchement voulu.
+ */
+export function redondanceAAfficher(m: Metrics): boolean {
+  return m.redundancyMet !== undefined && (m.redundancyMet < 1 || (m.usefulOverlap ?? 0) > 0);
+}
+
+/** Zones prioritaires de la phase, de la moins servie à la plus servie (priorité d'abord). */
+export function zonesTriees(zones: ZoneCoverage[]): ZoneCoverage[] {
+  return [...zones].sort(
+    (a, b) => a.served - b.served || b.level - a.level || a.name.localeCompare(b.name),
+  );
+}
+
+/** Couverture zone par zone (« Lisière nord : 92 % servie ») et redondance si demandée. */
+function ZonesDetail({ metrics }: { metrics: Metrics }) {
+  const zones = metrics.byZone ?? [];
+  if (zones.length === 0 && !redondanceAAfficher(metrics)) return null;
+  return (
+    <div className="kpi kpi-zones">
+      {zones.length > 0 && (
+        <>
+          <span className="kpi-label">Par zone prioritaire (servie par un drone capable)</span>
+          <ul className="zone-list">
+            {zonesTriees(zones).map((z) => (
+              <li key={z.zoneId}>
+                <span className="zone-name">
+                  <b>P{z.level}</b> {z.name}
+                </span>
+                {z.cells === 0 ? (
+                  <small>plus petite qu’une cellule de calcul</small>
+                ) : (
+                  <>
+                    <span className="gauge priority" aria-hidden="true">
+                      <span style={{ width: `${Math.round(z.served * 100)}%` }} />
+                    </span>
+                    <b className="zone-pct">{pct(z.served)}</b>
+                  </>
+                )}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+      {redondanceAAfficher(metrics) && (
+        <small>
+          Redondance : {pct(metrics.redundancyMet ?? 1)} des zones à plusieurs drones ont leur
+          compte · chevauchement superflu {pct(metrics.superfluousOverlap ?? 0)}
+        </small>
+      )}
+    </div>
+  );
+}
 
 /** Ce qui change pour les équipes : déplacements, retraits, ajouts, zone réattribuée. */
 function stabilityDetail(s: Stability): string {
@@ -108,6 +163,7 @@ export function KpiGrid({
       ) : (
         <Kpi label="Stabilité" value="—" sub="mesurée lors d’un recalcul en conduite" />
       )}
+      <ZonesDetail metrics={metrics} />
     </div>
   );
 }

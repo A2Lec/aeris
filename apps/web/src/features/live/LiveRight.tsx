@@ -105,6 +105,18 @@ export function LiveRight() {
         >
           Appliquer le dispositif
         </button>
+        <button
+          disabled={busy || !pending}
+          title={!pending ? 'Aucun recalcul en attente' : 'Garder le dispositif en place'}
+          onClick={() =>
+            run(async () => {
+              await api.rejectRecompute(mission.id);
+              setView('current');
+            })
+          }
+        >
+          Rejeter
+        </button>
       </footer>
     </>
   );

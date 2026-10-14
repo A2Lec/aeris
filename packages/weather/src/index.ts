@@ -1,4 +1,11 @@
-import type { DroneModel, Weather, WeatherFilter, WeatherProvider } from '@aeris/shared';
+import {
+  phaseWindow,
+  type DroneModel,
+  type Mission,
+  type Weather,
+  type WeatherFilter,
+  type WeatherProvider,
+} from '@aeris/shared';
 
 interface OpenMeteoCurrent {
   current: {
@@ -128,3 +135,66 @@ export const excludedByWeather: WeatherFilter = (resources, catalog, w) => {
   }
   return out;
 };
+
+/**
+ * Calcule si le soleil est au-dessus du seuil de nuit aéronautique.
+ * En France, la nuit aéronautique commence quand le soleil descend à -4° sous l'horizon
+ * (environ 30 minutes après le coucher du soleil).
+ */
+export function isDaylight(lat: number, lng: number, date: Date): boolean {
+  const rad = Math.PI / 180;
+  const dayOfYear = Math.floor(
+    (date.getTime() - new Date(Date.UTC(date.getUTCFullYear(), 0, 1)).getTime()) / 86400000,
+  );
+  // Déclinaison solaire approximative de Cooper (1969)
+  const declination = 23.45 * Math.sin((360 / 365) * (dayOfYear - 81) * rad) * rad;
+  // Temps solaire moyen basé sur l'heure UTC et la longitude (+4 min par degré Est)
+  const utcHours = date.getUTCHours() + date.getUTCMinutes() / 60 + date.getUTCSeconds() / 3600;
+  const solarTime = (utcHours + lng / 15 + 24) % 24;
+  const hourAngle = (solarTime - 12) * 15 * rad;
+
+  const sinAltitude =
+    Math.sin(lat * rad) * Math.sin(declination) +
+    Math.cos(lat * rad) * Math.cos(declination) * Math.cos(hourAngle);
+  const altitudeDeg = Math.asin(sinAltitude) / rad;
+
+  // Seuil de nuit aéronautique (-4° sous l'horizon)
+  return altitudeDeg > -4;
+}
+
+/**
+ * Détermine si une phase se déroule de jour ou de nuit selon la période déclarée de la mission.
+ * Si aucune période n'est déclarée, le jour est retenu par défaut.
+ */
+export function isPhaseDay(
+  mission: Pick<Mission, 'period' | 'phaseCount'>,
+  phase: number,
+  lat = 43.6,
+  lng = 1.4,
+): boolean {
+  const window = phaseWindow(mission, phase);
+  if (!window) return true;
+  const startMs = Date.parse(window.start);
+  const endMs = Date.parse(window.end);
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) return true;
+  // On évalue la luminosité au milieu de la phase
+  const midDate = new Date((startMs + endMs) / 2);
+  return isDaylight(lat, lng, midDate);
+}
+
+/**
+ * Adapte les conditions météo pour une phase spécifique de la mission :
+ * le statut `isDay` est déterminé en fonction de l'horaire réel de la phase (Jour ou Nuit).
+ */
+export function weatherForPhase(
+  baseWeather: Weather,
+  mission: Pick<Mission, 'period' | 'phaseCount'>,
+  phase: number,
+  lat = 43.6,
+  lng = 1.4,
+): Weather {
+  return {
+    ...baseWeather,
+    isDay: isPhaseDay(mission, phase, lat, lng),
+  };
+}

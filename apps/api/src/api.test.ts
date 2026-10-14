@@ -5,10 +5,14 @@
  */
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
   API,
   Catalog,
   CoverageLayers,
+  DroneModel,
   LiveState,
   MissionInput,
   MissionState,
@@ -17,9 +21,12 @@ import {
   type MissionEvent,
 } from '@aeris/shared';
 import { buildApp } from './app';
+import { initializeDroneCatalog } from './catalogStore';
 
 type App = Awaited<ReturnType<typeof buildApp>>;
 let app: App;
+let catalogDir = '';
+let previousCatalogPath: string | undefined;
 
 async function call<T>(
   schema: z.ZodType<T>,
@@ -36,11 +43,17 @@ async function call<T>(
 beforeAll(async () => {
   // Pas de réseau en CI : la météo tombe en panne, le calcul doit continuer sans elle.
   vi.stubGlobal('fetch', () => Promise.reject(new Error('réseau coupé (test)')));
+  previousCatalogPath = process.env.AERIS_DRONE_CATALOG_PATH;
+  catalogDir = await mkdtemp(join(tmpdir(), 'aeris-catalog-test-'));
+  process.env.AERIS_DRONE_CATALOG_PATH = join(catalogDir, 'drone-catalog.json');
   app = await buildApp({ logger: false });
   await app.ready();
 });
 afterAll(async () => {
   await app.close();
+  if (previousCatalogPath === undefined) delete process.env.AERIS_DRONE_CATALOG_PATH;
+  else process.env.AERIS_DRONE_CATALOG_PATH = previousCatalogPath;
+  await rm(catalogDir, { recursive: true, force: true });
   vi.unstubAllGlobals();
 });
 
@@ -51,8 +64,73 @@ describe('Scénario de démo complet', () => {
 
   it('catalogue et mission de démo', async () => {
     const catalog = await call(Catalog, 'GET', API.catalog);
-    expect(catalog.drones.length).toBeGreaterThan(0);
+    expect(catalog.drones).toHaveLength(3);
+    expect(catalog.drones).toMatchObject([
+      {
+        id: 'matrice-4t',
+        enduranceMin: 49,
+        maxWindMs: 12,
+        rainOk: true,
+        minTempC: -20,
+        maxTempC: 50,
+        zoomX: 112,
+        thermal: true,
+        night: true,
+      },
+      {
+        id: 'mavic-3e',
+        enduranceMin: 45,
+        maxWindMs: 12,
+        rainOk: false,
+        minTempC: -10,
+        maxTempC: 40,
+        zoomX: 56,
+        thermal: false,
+        night: false,
+      },
+      {
+        id: 'mini-5',
+        enduranceMin: 36,
+        maxWindMs: 12,
+        rainOk: false,
+        minTempC: -10,
+        maxTempC: 40,
+        zoomX: 4,
+        thermal: false,
+        night: false,
+      },
+    ]);
     input = await call(MissionInput, 'GET', API.demoMission);
+  });
+
+  it('ajoute un drone et le conserve après le rechargement du catalogue', async () => {
+    const added = await call(
+      DroneModel,
+      'POST',
+      API.catalogDrones,
+      {
+        name: 'Drone de test',
+        maxWindMs: 9,
+        rainOk: false,
+        zoomX: 12,
+        thermal: true,
+        night: true,
+      },
+      201,
+    );
+    expect(added.id).toBe('drone-de-test');
+    expect(added).toMatchObject({ enduranceMin: 30, minTempC: -10, maxTempC: 40 });
+
+    await initializeDroneCatalog();
+    const catalog = await call(Catalog, 'GET', API.catalog);
+    expect(catalog.drones.find((drone) => drone.id === added.id)).toEqual(added);
+
+    const invalid = await app.inject({
+      method: 'POST',
+      url: API.catalogDrones,
+      payload: { name: 'Drone invalide', maxWindMs: -1 },
+    });
+    expect(invalid.statusCode).toBe(400);
   });
 
   it('refuse une mission invalide (400)', async () => {
@@ -148,6 +226,37 @@ describe('Scénario de démo complet', () => {
     expect(accepted.assignments.every((a) => a.phase === 0 && a.resourceId !== 'r1')).toBe(true);
   }, 60_000);
 
+  it('un événement survenu après le recalcul le rend périmé : pas de réengagement', async () => {
+    const recomputed = await call(Proposal, 'POST', API.recompute(id), {});
+    const victim = recomputed.assignments.find((a) => a.phase === 0)!.resourceId;
+    const after = await call(LiveState, 'POST', API.events(id), {
+      type: 'resource_unavailable',
+      resourceId: victim,
+    });
+    expect(after.pendingRecompute).toBeUndefined();
+    const res = await app.inject({
+      method: 'POST',
+      url: API.acceptRecompute(id),
+      payload: { proposalId: recomputed.id },
+    });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().message).toMatch(/périmé/);
+
+    // Le recalcul suivant n'engage pas le TP tombé.
+    const again = await call(Proposal, 'POST', API.recompute(id), {});
+    expect(again.assignments.some((a) => a.resourceId === victim)).toBe(false);
+    const applied = await call(LiveState, 'POST', API.acceptRecompute(id), {
+      proposalId: again.id,
+    });
+    expect(applied.assignments.some((a) => a.resourceId === victim)).toBe(false);
+  }, 60_000);
+
+  it('le commandement peut rejeter un recalcul', async () => {
+    await call(Proposal, 'POST', API.recompute(id), {});
+    const before = await call(LiveState, 'POST', API.rejectRecompute(id), {});
+    expect(before.pendingRecompute).toBeUndefined();
+  }, 60_000);
+
   it('nouvelle zone prioritaire puis changement de phase', async () => {
     const zone = { ...input.priorityZones[0], id: 'z-live', phases: undefined };
     await call(LiveState, 'POST', API.events(id), { type: 'priority_zone_added', zone });
@@ -164,4 +273,32 @@ describe('Scénario de démo complet', () => {
     });
     expect(res.statusCode).toBe(400);
   });
+});
+
+describe('Changement de phase par mauvais temps', () => {
+  it('les drones interdits par la météo restent au sol', async () => {
+    const input = await call(MissionInput, 'GET', API.demoMission);
+    const id = (await call(MissionState, 'POST', API.missions, input, 201)).mission.id;
+    const [p] = await call(z.array(Proposal), 'POST', API.solve(id), {
+      strategies: ['priorite'],
+      useWeather: false,
+    });
+    await call(MissionState, 'POST', API.start(id, p.id));
+    await call(LiveState, 'POST', API.events(id), {
+      type: 'weather_update',
+      weather: {
+        windMs: 11,
+        gustMs: 14,
+        precipitationMm: 0.4,
+        temperatureC: 12,
+        isDay: true,
+        fetchedAt: new Date().toISOString(),
+        source: 'manuel',
+      },
+    });
+    const live = await call(LiveState, 'POST', API.events(id), { type: 'phase_changed', phase: 1 });
+    expect(live.phase).toBe(1);
+    // Rafales de 14 m/s : aucun drone du catalogue (12 m/s max) ne doit repartir.
+    expect(live.assignments).toHaveLength(0);
+  }, 60_000);
 });

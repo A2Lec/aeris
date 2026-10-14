@@ -56,9 +56,25 @@ const plugin: FastifyPluginAsync = async (app) => {
     const live = liveOf(st);
     const { proposalId } = AcceptRequest.parse(req.body);
     const pending = live.pendingRecompute;
-    if (!pending || pending.id !== proposalId) throw new HttpError(404, 'Recalcul introuvable');
-    live.assignments = pending.assignments.filter((a) => a.phase === live.phase);
+    if (!pending || pending.id !== proposalId) {
+      // Retiré par un événement survenu depuis (voir applyEvent) : il faut recalculer.
+      throw new HttpError(409, 'Recalcul périmé : la situation a changé, relancez le calcul');
+    }
+    // Garde-fou : jamais de couple indisponible dans le dispositif appliqué.
+    const available = new Set(st.mission.resources.filter((r) => r.available).map((r) => r.id));
+    live.assignments = pending.assignments.filter(
+      (a) => a.phase === live.phase && available.has(a.resourceId),
+    );
     live.metrics = metricsFor(st.mission, live.phase, live.assignments);
+    live.pendingRecompute = undefined;
+    publishLive(st.mission.id, live);
+    return live;
+  });
+
+  /** Le commandement refuse le recalcul proposé : le dispositif en place ne change pas. */
+  app.post<IdParams>('/missions/:id/recompute/reject', async (req) => {
+    const st = getOr404(req.params.id);
+    const live = liveOf(st);
     live.pendingRecompute = undefined;
     publishLive(st.mission.id, live);
     return live;

@@ -189,6 +189,26 @@ interface PlacedEntry {
   slot?: { start: string; end: string };
 }
 
+/** Pas d'arrondi des tranches d'altitude : « 70-95 m » se retient, « 71-98 m » non. */
+export const PAS_TRANCHE_M = 5;
+
+/**
+ * Tranche d'au moins `hauteur` mètres, calée en haut de l'intervalle libre [debut, fin], aux
+ * bornes arrondies au multiple de PAS_TRANCHE_M quand c'est possible : le haut est arrondi
+ * vers le bas (jamais au-dessus du plafond), le bas aussi (la tranche s'épaissit de moins de
+ * 5 m au lieu de rétrécir), sans jamais sortir de [debut, fin].
+ */
+export function trancheArrondie(
+  debut: number,
+  fin: number,
+  hauteur: number,
+): { minM: number; maxM: number } {
+  const bas = (x: number) => Math.floor(x / PAS_TRANCHE_M) * PAS_TRANCHE_M;
+  const maxM = bas(fin) - debut >= hauteur ? bas(fin) : fin;
+  const minM = bas(maxM - hauteur) >= debut ? bas(maxM - hauteur) : maxM - hauteur;
+  return { minM, maxM };
+}
+
 /** Calcule les intervalles verticaux libres sous un plafond donné compte tenu d'intervalles occupés. */
 function findFreeIntervals(
   floor: number,
@@ -270,10 +290,7 @@ function tryAllocateVertical(
     );
     const bandHeight = Math.min(DEFAULT_BAND_M, Math.min(available, adaptiveHeight));
 
-    const altitude = {
-      minM: bestInterval.end - bandHeight,
-      maxM: bestInterval.end,
-    };
+    const altitude = trancheArrondie(bestInterval.start, bestInterval.end, bandHeight);
 
     placed.push({ candidate: c, altitude, slot });
   }
@@ -383,7 +400,7 @@ export const deconflict: Deconflicter = (assignments, ctx) => {
       const h = Math.min(DEFAULT_BAND_M, c.ceiling - FLOOR_M);
       finalPlaced.push({
         ...c.assignment,
-        altitude: { minM: c.ceiling - h, maxM: c.ceiling },
+        altitude: trancheArrondie(FLOOR_M, c.ceiling, h),
       });
       continue;
     }
@@ -473,10 +490,7 @@ export const deconflict: Deconflicter = (assignments, ctx) => {
 
           const entry: PlacedEntry = {
             candidate: c,
-            altitude: {
-              minM: bestInterval.end - bandHeight,
-              maxM: bestInterval.end,
-            },
+            altitude: trancheArrondie(bestInterval.start, bestInterval.end, bandHeight),
             slot,
           };
 

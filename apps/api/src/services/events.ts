@@ -1,7 +1,13 @@
 import type { LiveState, MissionEvent, MissionState } from '@aeris/shared';
+import { excludedByWeather } from '@aeris/weather';
+import { getDrones } from '../catalogStore';
 import { metricsFor } from './pipeline';
 
-/** Applique un événement de conduite à l'état de la mission, puis recalcule les métriques. */
+/**
+ * Applique un événement de conduite à l'état de la mission, puis recalcule les métriques.
+ * Tout événement change la situation : un recalcul en attente, calculé avant, devient périmé
+ * (il pourrait réengager un TP qui vient de tomber). On le retire ; l'opérateur relance.
+ */
 export function applyEvent(st: MissionState, live: LiveState, ev: MissionEvent): void {
   const { mission } = st;
   const setAvailable = (id: string, available: boolean) => {
@@ -34,13 +40,20 @@ export function applyEvent(st: MissionState, live: LiveState, ev: MissionEvent):
       live.phase = Math.min(ev.phase, mission.phaseCount - 1);
       const proposal = st.proposals.find((p) => p.id === live.proposalId);
       const available = new Set(mission.resources.filter((r) => r.available).map((r) => r.id));
+      // Le plan prévu ne tient pas compte de la météo du moment : un drone qu'elle interdit
+      // reste au sol (une météo de repli n'est pas une mesure, on l'ignore).
+      const grounded =
+        live.weather && live.weather.source !== 'repli'
+          ? excludedByWeather(mission.resources, getDrones(), live.weather)
+          : {};
       live.assignments = (proposal?.assignments ?? []).filter(
-        (a) => a.phase === live.phase && available.has(a.resourceId),
+        (a) => a.phase === live.phase && available.has(a.resourceId) && !grounded[a.resourceId],
       );
       break;
     }
   }
 
   live.events.push({ at: new Date().toISOString(), event: ev });
+  live.pendingRecompute = undefined;
   live.metrics = metricsFor(mission, live.phase, live.assignments);
 }

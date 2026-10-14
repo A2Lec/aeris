@@ -1,28 +1,15 @@
-import {
-  API,
-  Weather,
-  type DroneModel,
-  type PolygonGeom,
-  type Weather as WeatherT,
-} from '@aeris/shared';
-import { isMock } from '../../api/client';
-
-/** Centre approximatif de la zone d'intervention (même calcul que l'API pour la météo). */
-export function areaCenter(area: PolygonGeom): { lat: number; lng: number } {
-  const ring = area.coordinates[0];
-  return {
-    lng: ring.reduce((s, p) => s + p[0], 0) / ring.length,
-    lat: ring.reduce((s, p) => s + p[1], 0) / ring.length,
-  };
-}
+import type { DroneModel, PolygonGeom, Weather as WeatherT } from '@aeris/shared';
+import { api } from '../../api/client';
+import { centreZone } from './meteo';
 
 /** Météo actuelle au centre de la zone, relevée par l'API (Open-Meteo, cache, repli). */
 export async function importWeather(area: PolygonGeom): Promise<WeatherT> {
-  if (isMock) throw new Error('Météo indisponible en mode démonstration : saisissez-la.');
-  const { lat, lng } = areaCenter(area);
-  const res = await fetch(API.weather(Number(lat.toFixed(4)), Number(lng.toFixed(4))));
-  if (!res.ok) throw new Error('Météo indisponible : saisissez les valeurs relevées sur place.');
-  return Weather.parse(await res.json());
+  const [lng, lat] = centreZone({ workArea: area });
+  try {
+    return await api.weather(Number(lat.toFixed(4)), Number(lng.toFixed(4)));
+  } catch {
+    throw new Error('Météo indisponible : saisissez les valeurs relevées sur place.');
+  }
 }
 
 /** Valeurs de départ d'une saisie manuelle, sans relevé. */

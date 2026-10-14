@@ -1,5 +1,7 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { create } from 'zustand';
+import type { NewDroneModel } from '@aeris/shared';
+import { api } from '../api/client';
 import { useMissionStore } from '../app/missionStore';
 import { useLiveStore } from '../features/live/store';
 import { useResumeStore } from '../features/live/ResumeWizard';
@@ -59,6 +61,15 @@ export function AppMenu() {
   const { open, setOpen } = useMenuStore();
   const { theme, setTheme } = useThemeStore();
   const hasMission = useMissionStore((st) => !!st.state);
+  const { catalog, setCatalog, run, busy } = useMissionStore();
+  const [droneDraft, setDroneDraft] = useState<NewDroneModel>({
+    name: '',
+    maxWindMs: 10,
+    rainOk: false,
+    zoomX: 1,
+    thermal: false,
+    night: false,
+  });
   const panel = useRef<HTMLElement>(null);
 
   useEffect(() => {
@@ -73,6 +84,17 @@ export function AppMenu() {
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
   }, [open, setOpen]);
+
+  const updateDroneDraft = <K extends keyof NewDroneModel>(key: K, value: NewDroneModel[K]) =>
+    setDroneDraft((current) => ({ ...current, [key]: value }));
+  const addDrone = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    void run(async () => {
+      const drone = await api.addDrone(droneDraft);
+      if (catalog) setCatalog({ ...catalog, drones: [...catalog.drones, drone] });
+      setDroneDraft((current) => ({ ...current, name: '' }));
+    });
+  };
 
   if (!open) return null;
 
@@ -128,6 +150,100 @@ export function AppMenu() {
               ))}
             </div>
           </div>
+        </section>
+        <section aria-labelledby="menu-catalog">
+          <h3 id="menu-catalog">Catalogue de drones</h3>
+          {catalog ? (
+            <ul className="menu-drone-list">
+              {catalog.drones.map((drone) => (
+                <li key={drone.id}>
+                  <strong>{drone.name}</strong>
+                  <small>
+                    Vent {drone.maxWindMs} m/s · zoom ×{drone.zoomX}
+                  </small>
+                  <small>
+                    {drone.rainOk ? 'Résistant à la pluie' : 'Non résistant à la pluie'} · Vision :{' '}
+                    {drone.thermal || drone.night
+                      ? [drone.thermal && 'thermique', drone.night && 'nocturne']
+                          .filter(Boolean)
+                          .join(' et ')
+                      : 'standard'}
+                  </small>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="menu-help">Chargement du catalogue…</p>
+          )}
+          <form className="menu-drone-form" onSubmit={addDrone}>
+            <h4>Ajouter un drone</h4>
+            <label>
+              Nom du modèle
+              <input
+                required
+                type="text"
+                value={droneDraft.name}
+                onChange={(event) => updateDroneDraft('name', event.target.value)}
+                placeholder="Ex. Autel EVO Max 4T"
+              />
+            </label>
+            <label>
+              Vent maximal (m/s)
+              <input
+                required
+                type="number"
+                min={0}
+                step={0.1}
+                value={droneDraft.maxWindMs}
+                onChange={(event) => updateDroneDraft('maxWindMs', Number(event.target.value))}
+              />
+            </label>
+            <label>
+              Zoom optique (×)
+              <input
+                required
+                type="number"
+                min={0}
+                step={0.1}
+                value={droneDraft.zoomX}
+                onChange={(event) => updateDroneDraft('zoomX', Number(event.target.value))}
+              />
+            </label>
+            <label className="menu-drone-toggle">
+              <input
+                type="checkbox"
+                checked={droneDraft.rainOk}
+                onChange={(event) => updateDroneDraft('rainOk', event.target.checked)}
+              />
+              Résistant à la pluie
+            </label>
+            <fieldset className="menu-drone-capabilities">
+              <legend>Capacités de vision</legend>
+              <label className="menu-drone-toggle">
+                <input
+                  type="checkbox"
+                  checked={droneDraft.night}
+                  onChange={(event) => updateDroneDraft('night', event.target.checked)}
+                />
+                Vision nocturne
+              </label>
+              <label className="menu-drone-toggle">
+                <input
+                  type="checkbox"
+                  checked={droneDraft.thermal}
+                  onChange={(event) => updateDroneDraft('thermal', event.target.checked)}
+                />
+                Caméra thermique
+              </label>
+            </fieldset>
+            <button
+              className="primary"
+              type="submit"
+              disabled={busy || !catalog || !droneDraft.name.trim()}
+            >
+              Ajouter au catalogue
+            </button>
+          </form>
         </section>
       </nav>
     </>

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { DroneModel, PolygonGeom, Weather } from '@aeris/shared';
-import { areaCenter, editWeather, weatherLimits } from './weather';
+import type { DroneModel, Weather } from '@aeris/shared';
+import { editWeather, weatherLimits } from './weather';
 
 const calm: Weather = {
   windMs: 3,
@@ -25,21 +25,6 @@ const drone = {
 } as DroneModel;
 
 describe('météo de reprise', () => {
-  it('centre de la zone d’intervention', () => {
-    const square: PolygonGeom = {
-      type: 'Polygon',
-      coordinates: [
-        [
-          [0, 0],
-          [2, 0],
-          [2, 2],
-          [0, 2],
-        ],
-      ],
-    };
-    expect(areaCenter(square)).toEqual({ lat: 1, lng: 1 });
-  });
-
   it('une correction devient une saisie manuelle datée', () => {
     const now = new Date('2026-10-14T10:00:00.000Z');
     expect(editWeather(calm, { windMs: 8 }, now)).toEqual({

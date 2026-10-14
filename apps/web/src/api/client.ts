@@ -8,8 +8,10 @@ import {
   type MissionInput,
   type MissionState,
   type MissionStatus,
+  type NewDroneModel,
   type Proposal,
   type Strategy,
+  type Weather,
 } from '@aeris/shared';
 import { mockApi } from './mock';
 
@@ -29,6 +31,8 @@ async function http<T>(method: string, url: string, body?: unknown): Promise<T> 
 /** Client typé de l'API : une méthode par route (voir API dans @aeris/shared). */
 const httpApi = {
   catalog: () => http<Catalog>('GET', API.catalog),
+  addDrone: (drone: NewDroneModel) =>
+    http<Catalog['drones'][number]>('POST', API.catalogDrones, drone),
   demoMission: () => http<MissionInput>('GET', API.demoMission),
   createMission: (input: MissionInput) => http<MissionState>('POST', API.missions, input),
   getMission: (id: string) => http<MissionState>('GET', API.mission(id)),
@@ -49,6 +53,9 @@ const httpApi = {
   recompute: (id: string) => http<Proposal>('POST', API.recompute(id), {}),
   acceptRecompute: (id: string, proposalId: string) =>
     http<LiveState>('POST', API.acceptRecompute(id), { proposalId }),
+  rejectRecompute: (id: string) => http<LiveState>('POST', API.rejectRecompute(id), {}),
+  /** Météo réelle (Open-Meteo via l'API, avec cache et repli hors ligne). */
+  weather: (lat: number, lng: number) => http<Weather>('GET', API.weather(lat, lng)),
 };
 
 export type Api = typeof httpApi;

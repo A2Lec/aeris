@@ -1,10 +1,17 @@
 import type { FastifyPluginAsync } from 'fastify';
-import { demoMission, drones, pilotRules } from '@aeris/data';
+import { demoMission, pilotRules } from '@aeris/data';
+import { NewDroneModel } from '@aeris/shared';
 import { fetchWeather } from '@aeris/weather';
 import { z } from 'zod';
+import { addDrone, getDrones } from '../catalogStore';
 
 const plugin: FastifyPluginAsync = async (app) => {
-  app.get('/catalog', async () => ({ drones, rules: pilotRules }));
+  app.get('/catalog', async () => ({ drones: getDrones(), rules: pilotRules }));
+
+  app.post('/catalog/drones', async (req, reply) => {
+    const input = NewDroneModel.parse(req.body);
+    return reply.code(201).send(await addDrone(input));
+  });
 
   app.get('/demo-mission', async () => demoMission);
 
