@@ -1,8 +1,7 @@
 import type { Solver } from '@aeris/shared';
-import { ilpSolve } from './ilp';
+import { greedySolve } from './greedy';
 
 export { greedySolve } from './greedy';
-export { ilpSolve } from './ilp';
 
-/** Point d'entrée utilisé par l'API : changer ici l'implémentation par défaut. */
-export const solve: Solver = ilpSolve;
+/** Point d'entrée utilisé par l'API : recuit simulé (le solveur exact HiGHS a été retiré). */
+export const solve: Solver = greedySolve;

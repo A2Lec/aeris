@@ -5,6 +5,7 @@ import {
   addCandidate,
   buildProblem,
   candidateCost,
+  holeValue,
   isProblem,
   marginal,
   toResult,
@@ -43,16 +44,31 @@ export function seedOf(ctx: SolveContext): number {
   return h;
 }
 
-/** État incrémental : nombre de couples qui servent chaque cellule, score courant. */
+/**
+ * État incrémental : nombre de couples qui servent chaque cellule, nombre de drones posés
+ * dans chaque zone prioritaire active, score courant.
+ */
 class State {
   readonly count: Int32Array;
+  /** Drones (capables ou non) qui voient chaque cellule : 0 = trou. */
+  readonly seen: Int32Array;
+  readonly zoneCount: Int32Array;
   readonly choice: Int32Array;
   engaged = 0;
   value = 0;
 
   constructor(private readonly p: Problem) {
     this.count = new Int32Array(p.weights.length);
+    this.seen = new Int32Array(p.weights.length);
+    this.zoneCount = new Int32Array(p.zones.length);
     this.choice = new Int32Array(p.usable.length).fill(-1);
+  }
+
+  /** Zones prioritaires pourvues d'au moins un drone. */
+  zonesHeld(): number {
+    let n = 0;
+    for (const c of this.zoneCount) if (c > 0) n++;
+    return n;
   }
 
   /** Retire le couple k de sa position ; renvoie la variation de score. */
@@ -62,9 +78,10 @@ class State {
     const u = this.p.usable[k]!;
     let d = candidateCost(this.p, k, j);
     for (const i of u.covers[j]!) {
-      const n = --this.count[i]!;
-      d -= marginal(this.p, i, n);
+      if (--this.seen[i]! === 0) d -= holeValue(this.p, i);
+      if (u.capable[i]) d -= marginal(this.p, i, --this.count[i]!);
     }
+    for (const z of u.zonesIn[j]!) if (--this.zoneCount[z]! === 0) d -= this.p.zoneValue;
     this.choice[k] = -1;
     this.engaged--;
     this.value += d;
@@ -76,9 +93,10 @@ class State {
     const u = this.p.usable[k]!;
     let d = -candidateCost(this.p, k, j);
     for (const i of u.covers[j]!) {
-      const n = this.count[i]!++;
-      d += marginal(this.p, i, n);
+      if (this.seen[i]!++ === 0) d += holeValue(this.p, i);
+      if (u.capable[i]) d += marginal(this.p, i, this.count[i]!++);
     }
+    for (const z of u.zonesIn[j]!) if (this.zoneCount[z]!++ === 0) d += this.p.zoneValue;
     this.choice[k] = j;
     this.engaged++;
     this.value += d;
@@ -89,7 +107,11 @@ class State {
   gainAt(k: number, j: number): number {
     const u = this.p.usable[k]!;
     let d = -candidateCost(this.p, k, j);
-    for (const i of u.covers[j]!) d += marginal(this.p, i, this.count[i]!);
+    for (const i of u.covers[j]!) {
+      if (this.seen[i]! === 0) d += holeValue(this.p, i);
+      if (u.capable[i]) d += marginal(this.p, i, this.count[i]!);
+    }
+    for (const z of u.zonesIn[j]!) if (this.zoneCount[z]! === 0) d += this.p.zoneValue;
     return d;
   }
 }
@@ -173,7 +195,9 @@ export function anneal(p: Problem, opts: AnnealOptions = {}): Int32Array {
 
   const rand = rng(opts.seed ?? 1);
   const iterations = opts.iterations ?? ITERATIONS;
-  const meanGain = Math.max(s.value / Math.max(s.engaged, 1), p.totalWeight * 0.01, 1e-9);
+  // Échelle de température : gain moyen d'un drone, hors valeur (énorme) des zones pourvues.
+  const coverValue = s.value - s.zonesHeld() * p.zoneValue;
+  const meanGain = Math.max(coverValue / Math.max(s.engaged, 1), p.totalWeight * 0.01, 1e-9);
   const t0 = meanGain * (opts.temperature ?? 0.1);
   const cooling = Math.pow(FINAL_TEMPERATURE_RATIO, 1 / iterations);
   const deadline = Date.now() + TIME_BUDGET_MS;
@@ -308,11 +332,11 @@ function fillGaps(
   let improved = false;
   for (const h of grid.cells) {
     if (Date.now() > deadline) break;
-    if (p.weights[h.id]! <= 0 || s.count[h.id]! > 0) continue;
+    if (p.weights[h.id]! <= 0 || s.seen[h.id]! > 0) continue;
     p.usable.forEach((u, k) => {
       const j = s.choice[k]!;
       const here = j >= 0 ? u.candidateCells[j] : undefined;
-      if (!here || u.fixed || s.count[h.id]! > 0) return;
+      if (!here || u.fixed || s.seen[h.id]! > 0) return;
       const d = distanceM(here.center, h.center);
       if (d <= u.radius) return;
       // Point à (rayon − 1 cellule) du trou, sur le segment trou → position actuelle.
@@ -335,7 +359,7 @@ function fillGaps(
 
 /**
  * Couverture maximale pondérée (MCLP) par recuit simulé, démarré d'une construction gloutonne.
- * Sert de solveur rapide et de secours si l'ILP (ilp.ts) dépasse le temps imparti.
+ * C'est le solveur utilisé par l'API (voir index.ts).
  */
 export function greedySolve(ctx: SolveContext): SolveResult {
   const problem = buildProblem(ctx);
