@@ -9,9 +9,9 @@ import {
   coverageGeometry,
   mesurerStabilite,
 } from '@aeris/geo';
-import { solve } from '@aeris/solver';
+import { needsSizing, sizeFleet, solve } from '@aeris/solver';
 import { deconflict } from '@aeris/deconflict';
-import { excludedByWeather, fetchWeather, weatherForPhase } from '@aeris/weather';
+import { excludedByWeather, fetchWeather, flyability, weatherForPhase } from '@aeris/weather';
 import {
   meetsRequirement,
   type Assignment,
@@ -179,6 +179,40 @@ export function excludedForPhase(
   const [lng, lat] = workAreaCenter(mission);
   const w = mission.period ? weatherForPhase(weather, mission, phase, lat, lng) : weather;
   return excludedByWeather(mission.resources, catalog, w);
+}
+
+/**
+ * Planification sans moyens réels : le solveur dimensionne la flotte (nombre de drones et de
+ * télépilotes, modèles de la bibliothèque) et la mission reçoit ces couples génériques.
+ * Une mission qui a déjà des couples nommés est laissée telle quelle.
+ */
+export function sizeMission(
+  mission: Mission,
+  weather?: Weather,
+): { mission: Mission; diagnostics: string[] } {
+  if (!needsSizing(mission)) return { mission, diagnostics: [] };
+  const realWeather = weather?.source === 'repli' ? undefined : weather;
+  const phases = [...Array(mission.phaseCount).keys()];
+  // Même règle que excludedForPhase : le jour ou la nuit suit l'horaire de chaque phase.
+  const [lng, lat] = workAreaCenter(mission);
+  const phaseWeathers = realWeather
+    ? phases.map((phase) =>
+        mission.period ? weatherForPhase(realWeather, mission, phase, lat, lng) : realWeather,
+      )
+    : [];
+  const sizing = sizeFleet({
+    mission,
+    catalog: getDrones(),
+    rules: pilotRules,
+    grids: phases.map((phase) => buildGrid(mission, phase)),
+    flyable: realWeather
+      ? (model) => phaseWeathers.every((w) => flyability(model, w).ok)
+      : undefined,
+  });
+  return {
+    mission: { ...mission, pilots: sizing.pilots, resources: sizing.resources },
+    diagnostics: sizing.diagnostics,
+  };
 }
 
 /** Centre approximatif de la zone de travail (pour la météo). */

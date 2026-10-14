@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { demoMission } from '@aeris/data';
 import type { Mission, Weather } from '@aeris/shared';
-import { excludedForPhase } from './pipeline';
+import { excludedForPhase, sizeMission } from './pipeline';
 
 const mission = { ...demoMission, id: 'm-test' } as Mission;
 
@@ -38,4 +38,17 @@ describe('excludedForPhase', () => {
   it("une météo de repli n'écarte aucun drone", () => {
     expect(excludedForPhase(mission, 0, { ...soir, source: 'repli' })).toEqual({});
   });
+});
+
+describe('sizeMission', () => {
+  it('dimensionne une mission de jour pareil, calculée le jour ou le soir', () => {
+    const aDimensionner = { ...mission, pilots: [], resources: [] } as Mission;
+    const modeles = (w: Weather) =>
+      sizeMission(aDimensionner, w)
+        .mission.resources.map((r) => r.droneModelId)
+        .sort();
+    const deJour = modeles({ ...soir, isDay: true });
+    expect(deJour.length).toBeGreaterThan(0);
+    expect(modeles(soir)).toEqual(deJour);
+  }, 30_000);
 });
