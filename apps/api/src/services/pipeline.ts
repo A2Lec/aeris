@@ -9,9 +9,9 @@ import {
   coverageGeometry,
   mesurerStabilite,
 } from '@aeris/geo';
-import { solve } from '@aeris/solver';
+import { needsSizing, sizeFleet, solve } from '@aeris/solver';
 import { deconflict } from '@aeris/deconflict';
-import { excludedByWeather, fetchWeather } from '@aeris/weather';
+import { excludedByWeather, fetchWeather, flyability } from '@aeris/weather';
 import {
   meetsRequirement,
   type Assignment,
@@ -162,6 +162,30 @@ export async function buildProposal(
     metricsByPhase,
     diagnostics,
     createdAt: new Date().toISOString(),
+  };
+}
+
+/**
+ * Planification sans moyens réels : le solveur dimensionne la flotte (nombre de drones et de
+ * télépilotes, modèles de la bibliothèque) et la mission reçoit ces couples génériques.
+ * Une mission qui a déjà des couples nommés est laissée telle quelle.
+ */
+export function sizeMission(
+  mission: Mission,
+  weather?: Weather,
+): { mission: Mission; diagnostics: string[] } {
+  if (!needsSizing(mission)) return { mission, diagnostics: [] };
+  const realWeather = weather?.source === 'repli' ? undefined : weather;
+  const sizing = sizeFleet({
+    mission,
+    catalog: getDrones(),
+    rules: pilotRules,
+    grids: [...Array(mission.phaseCount).keys()].map((phase) => buildGrid(mission, phase)),
+    flyable: realWeather ? (model) => flyability(model, realWeather).ok : undefined,
+  });
+  return {
+    mission: { ...mission, pilots: sizing.pilots, resources: sizing.resources },
+    diagnostics: sizing.diagnostics,
   };
 }
 

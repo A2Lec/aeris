@@ -4,6 +4,8 @@ import type { NewDroneModel } from '@aeris/shared';
 import { api } from '../api/client';
 import { useMissionStore } from '../app/missionStore';
 import { useLiveStore } from '../features/live/store';
+import { useResumeStore } from '../features/live/ResumeWizard';
+import { resetConfigEditor } from '../features/config/store';
 import { useScenarioStore } from '../features/scenarios/store';
 import { useThemeStore, type Theme } from '../theme';
 import { projectFileName, toProject } from './project';
@@ -41,6 +43,8 @@ function backToStart() {
     draft: undefined,
     minimized: false,
   });
+  useResumeStore.getState().clear();
+  resetConfigEditor();
   useStartStore.getState().setMode(undefined);
 }
 

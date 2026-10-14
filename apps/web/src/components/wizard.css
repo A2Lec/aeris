@@ -1,0 +1,209 @@
+/* Parcours pas à pas posé sur la carte (planification, reprise en conduite). */
+
+.wizard-layer {
+  position: absolute;
+  z-index: 900;
+  top: 12px;
+  left: 12px;
+  bottom: 12px;
+  display: flex;
+  align-items: flex-start;
+  pointer-events: none;
+}
+/* Rien à dessiner : la fenêtre se centre et la carte s'efface derrière. */
+.wizard-layer.centered {
+  inset: 0;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgb(15 23 42 / 0.28);
+  pointer-events: auto;
+}
+
+.wizard {
+  pointer-events: auto;
+  width: min(400px, calc(100vw - 24px));
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 28px rgb(15 23 42 / 0.18);
+  animation: wizard-in 160ms ease-out;
+}
+.wizard-layer.centered .wizard {
+  width: min(480px, 100%);
+}
+@keyframes wizard-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .wizard {
+    animation: none;
+  }
+}
+
+.wizard-head {
+  padding: 16px 18px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.wizard-progress {
+  display: flex;
+  gap: 4px;
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+}
+.wizard-progress li {
+  flex: 1;
+}
+.wizard-progress button {
+  display: block;
+  width: 100%;
+  height: 6px;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+.wizard-progress button.done {
+  background: var(--primary);
+  box-shadow: none;
+  opacity: 0.45;
+}
+.wizard-progress button.current {
+  background: var(--primary);
+  box-shadow: none;
+}
+.wizard-progress button:not(:disabled):hover {
+  opacity: 0.8;
+}
+.wizard-count {
+  margin: 0 0 2px;
+  color: var(--text-2);
+  font-size: 12px;
+}
+.wizard-head h2 {
+  margin: 0;
+  font-size: 18px;
+}
+.wizard-intro {
+  margin: 6px 0 0;
+  color: var(--text-2);
+  line-height: 1.5;
+}
+
+.wizard-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 14px 18px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.wizard-body > label,
+.wizard-field {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  margin: 0;
+  font-weight: 500;
+}
+.wizard-body input[type='text'],
+.wizard-body input[type='search'],
+.wizard-body input[type='number'],
+.wizard-body select {
+  width: 100%;
+  max-width: none;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-weight: 400;
+}
+
+.wizard-foot {
+  display: flex;
+  gap: 8px;
+  padding: 12px 18px;
+  border-top: 1px solid var(--border);
+}
+.wizard-foot .primary {
+  margin-left: auto;
+}
+
+/* Bouton de tracé : il reste enfoncé tant que le dessin est en cours. */
+.draw-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+}
+.draw-button.active {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: var(--info-bg);
+}
+.draw-hint {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--info-bg);
+  color: var(--info-text);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+/* Zones déjà tracées : pastille de couleur, nom, action. */
+.zone-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.zone-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--border);
+}
+.zone-list li:last-child {
+  border-bottom: 0;
+}
+.zone-list .zone-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.zone-list .empty {
+  color: var(--text-2);
+}
+.swatch {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  border: 2px solid currentColor;
+  background: color-mix(in srgb, currentColor 25%, transparent);
+}
+
+.wizard-body .segmented {
+  width: 100%;
+}
+.wizard-body .segmented button {
+  flex: 1;
+}
