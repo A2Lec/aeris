@@ -19,7 +19,11 @@ import { distanceM } from '@aeris/geo';
  * Modèle commun au recuit (greedy.ts) et à l'ILP (ilp.ts) : mêmes candidats, même objectif,
  * pour que les deux solutions soient comparables et que l'ILP puisse garder la meilleure.
  *
- *   score = Σ w_i·[i servie] − α·Σ w_i·max(0, n_i − 1) − Σ coût de déplacement − Σ coût d'engagement
+ *   score = Σ w_i·min(n_i, r_i)/r_i − α·Σ w_i·max(0, n_i − r_i) − Σ coût de déplacement − Σ coût d'engagement
+ *
+ * n_i : couples capables qui servent la cellule ; r_i : drones voulus en même temps
+ * (`cell.redundancy`, réglé zone par zone dans le front). Même crédit partiel que
+ * @aeris/geo (redondance.ts) : le solveur optimise ce que la carte mesure.
  */
 
 /** Espacement des positions candidates (compromis précision / temps de calcul). */
@@ -32,22 +36,6 @@ const OVERLAP_PENALTY: Record<Strategy, number> = {
   priorite: 0.05,
   economie_moyens: 0.1,
 };
-/**
- * Chevauchement souhaité sur les zones prioritaires, dans [PRIORITY_OVERLAP_MIN, PRIORITY_OVERLAP_MAX] :
- *   0 = pénalisé comme ailleurs (une seule couverture suffit) ;
- *   1 = une seconde couverture d'une cellule prioritaire vaut autant que la première (redondance).
- * Interpolation linéaire entre les deux. Codé en dur pour l'instant, en attendant le réglage côté front.
- */
-export const PRIORITY_OVERLAP_MIN = 0;
-export const PRIORITY_OVERLAP_MAX = 1;
-export const PRIORITY_OVERLAP = 0.3;
-
-/** Ramène un réglage de chevauchement prioritaire dans les bornes autorisées. */
-export function clampPriorityOverlap(v: number): number {
-  if (!Number.isFinite(v)) return PRIORITY_OVERLAP_MIN;
-  return Math.min(PRIORITY_OVERLAP_MAX, Math.max(PRIORITY_OVERLAP_MIN, v));
-}
-
 /**
  * Bonus pour chaque couple engagé « dans » la zone prioritaire, en % du poids total de la grille.
  * Favorise l'emploi d'un plus grand nombre de drones sur les zones prioritaires (redondance,
@@ -75,6 +63,8 @@ export interface Usable {
   covers: Int32Array[];
   /** Pour chaque candidat : pénalité de déplacement depuis la solution précédente. */
   moveCost: Float64Array;
+  /** Candidat le plus proche de la position précédente (-1 si le couple n'était pas placé). */
+  prevIndex: number;
   /** Pour chaque candidat : bonus s'il place le couple dans la zone prioritaire (0 sinon). */
   priorityBonus: Float64Array;
 }
@@ -88,8 +78,6 @@ export interface Problem {
   /** Nombre max de couples engagés (arrêté). */
   maxEngaged: number;
   overlapPenalty: number;
-  /** Valeur d'une seconde couverture, par cellule (bonus si prioritaire, pénalité sinon). */
-  secondValue: Float64Array;
   /** Coût d'engagement d'un couple non imposé (non nul seulement en économie de moyens). */
   droneCost: number;
 }
@@ -171,6 +159,17 @@ export function buildProblem(ctx: SolveContext): Problem | SolveResult {
         ? STABILITY_PENALTY * discWeight * Math.min(distanceM(prev, p) / radius, 1)
         : 0,
     );
+    let prevIndex = -1;
+    if (prev && !res.fixedPosition) {
+      let bestD = Infinity;
+      candidates.forEach((c, j) => {
+        const d = distanceM(prev, c);
+        if (d < bestD) {
+          bestD = d;
+          prevIndex = j;
+        }
+      });
+    }
     const bonus =
       (Math.min(Math.max(PRIORITY_DRONE_BONUS, 0), PRIORITY_DRONE_BONUS_MAX) / 100) * totalWeight;
     const priorityBonus = Float64Array.from(covers, (cov) => {
@@ -189,6 +188,7 @@ export function buildProblem(ctx: SolveContext): Problem | SolveResult {
       candidateCells,
       covers,
       moveCost,
+      prevIndex,
       priorityBonus,
     });
   }
@@ -226,20 +226,19 @@ export function buildProblem(ctx: SolveContext): Problem | SolveResult {
     totalWeight,
     maxEngaged: mission.maxDrones,
     overlapPenalty: OVERLAP_PENALTY[strategy],
-    secondValue: Float64Array.from(grid.cells, (c, i) => {
-      const alpha = OVERLAP_PENALTY[strategy];
-      const beta = c.priorityLevel > 0 ? clampPriorityOverlap(PRIORITY_OVERLAP) : 0;
-      return (beta - alpha * (1 - beta)) * weights[i]!;
-    }),
     droneCost: strategy === 'economie_moyens' ? MIN_MARGINAL_GAIN * totalWeight : 0,
   };
 }
 
 /** Valeur de la (n+1)-ième couverture de la cellule i (n couples la servent déjà). */
 export function marginal(p: Problem, i: number, n: number): number {
-  if (n === 0) return p.weights[i]!;
-  if (n === 1) return p.secondValue[i]!;
-  return -p.overlapPenalty * p.weights[i]!;
+  const r = redundancyOf(p, i);
+  return n < r ? p.weights[i]! / r : -p.overlapPenalty * p.weights[i]!;
+}
+
+/** Drones voulus en même temps sur la cellule i (au moins 1). */
+export function redundancyOf(p: Problem, i: number): number {
+  return Math.max(1, p.ctx.grid.cells[i]!.redundancy ?? 1);
 }
 
 /** Coût (négatif = gain) de placer le couple k au candidat j, hors couverture. */
@@ -279,6 +278,7 @@ export function toResult(problem: Problem, choice: Int32Array, extra: string[] =
   const diagnostics = [...problem.diagnostics];
   const assignments: Assignment[] = [];
   const covered = new Uint8Array(grid.cells.length);
+  const served = new Int32Array(grid.cells.length);
   const engaged = usable.filter((_, k) => choice[k]! >= 0).length;
 
   usable.forEach((u, k) => {
@@ -291,7 +291,10 @@ export function toResult(problem: Problem, choice: Int32Array, extra: string[] =
       else diagnostics.push(`${u.res.id} non engagé : aucun apport de couverture`);
       return;
     }
-    for (const i of u.covers[j]!) covered[i] = 1;
+    for (const i of u.covers[j]!) {
+      covered[i] = 1;
+      served[i]!++;
+    }
     assignments.push({
       resourceId: u.res.id,
       phase,
@@ -308,6 +311,14 @@ export function toResult(problem: Problem, choice: Int32Array, extra: string[] =
   if (unmetPriority > 0) {
     diagnostics.push(
       `${Math.round((unmetPriority * grid.cellAreaM2) / 1e4)} ha de zone prioritaire non couverts (ou sans drone aux capacités requises)`,
+    );
+  }
+  const short = grid.cells.filter(
+    (c) => !c.forbidden && c.redundancy >= 2 && served[c.id]! < c.redundancy,
+  ).length;
+  if (short > 0) {
+    diagnostics.push(
+      `${Math.round((short * grid.cellAreaM2) / 1e4)} ha n'ont pas le nombre de drones voulus en même temps (redondance)`,
     );
   }
   diagnostics.push(...extra);

@@ -1,18 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { drones, demoMission, pilotRules } from '@aeris/data';
+import { drones, demoMission, pilotRules, testMissions } from '@aeris/data';
 import { buildGrid, computeMetrics } from '@aeris/geo';
 import { anneal, greedySolve } from './greedy';
 import { ilpSolve } from './ilp';
 import {
   PRIORITY_DRONE_BONUS,
   PRIORITY_DRONE_MIN_SHARE,
-  PRIORITY_OVERLAP,
-  PRIORITY_OVERLAP_MAX,
-  PRIORITY_OVERLAP_MIN,
   buildProblem,
-  clampPriorityOverlap,
   isProblem,
   marginal,
+  redundancyOf,
 } from './problem';
 
 const mission = { ...demoMission, id: 'test' };
@@ -95,33 +92,40 @@ describe('recuit simulé et ILP', () => {
   });
 });
 
-describe('chevauchement sur les zones prioritaires', () => {
-  it('borne le réglage', () => {
-    expect(clampPriorityOverlap(-2)).toBe(PRIORITY_OVERLAP_MIN);
-    expect(clampPriorityOverlap(5)).toBe(PRIORITY_OVERLAP_MAX);
-    expect(clampPriorityOverlap(Number.NaN)).toBe(PRIORITY_OVERLAP_MIN);
-    expect(clampPriorityOverlap(PRIORITY_OVERLAP)).toBe(PRIORITY_OVERLAP);
-  });
+describe('redondance voulue par zone (cell.redundancy)', () => {
+  const tm = testMissions.find((t) => t.name === 'redondance')!;
+  const grid = buildGrid(tm.mission, 0);
+  const ctx = {
+    mission: tm.mission,
+    catalog: drones,
+    rules: pilotRules,
+    grid,
+    phase: 0,
+    strategy: 'priorite' as const,
+  };
 
-  it('bonifie la seconde couverture d’une cellule prioritaire, pénalise les autres', () => {
-    const ctx = {
-      mission,
-      catalog: drones,
-      rules: pilotRules,
-      grid: buildGrid(mission, 0),
-      phase: 0,
-      strategy: 'priorite' as const,
-    };
+  it('crédite w/r par drone jusqu’à r, pénalise au-delà', () => {
     const p = buildProblem(ctx);
     if (!isProblem(p)) throw new Error('problème attendu');
-    const prio = ctx.grid.cells.find((c) => c.priorityLevel > 0 && !c.forbidden)!;
-    const plain = ctx.grid.cells.find((c) => c.priorityLevel === 0 && !c.forbidden)!;
-    const alpha = p.overlapPenalty;
-    const beta = PRIORITY_OVERLAP;
-    expect(marginal(p, prio.id, 1)).toBeCloseTo((beta - alpha * (1 - beta)) * p.weights[prio.id]!);
-    expect(marginal(p, plain.id, 1)).toBeLessThan(0);
-    expect(marginal(p, prio.id, 2)).toBeLessThan(0);
+    const r2 = grid.cells.find((c) => c.redundancy === 2 && !c.forbidden)!;
+    const r1 = grid.cells.find((c) => c.redundancy === 1 && !c.forbidden)!;
+    expect(redundancyOf(p, r2.id)).toBe(2);
+    expect(marginal(p, r2.id, 0)).toBeCloseTo(p.weights[r2.id]! / 2);
+    expect(marginal(p, r2.id, 1)).toBeCloseTo(p.weights[r2.id]! / 2);
+    expect(marginal(p, r2.id, 2)).toBeLessThan(0);
+    expect(marginal(p, r1.id, 0)).toBeCloseTo(p.weights[r1.id]!);
+    expect(marginal(p, r1.id, 1)).toBeLessThan(0);
   });
+
+  it('place plusieurs drones sur la zone qui en demande 2 et signale la redondance manquante', async () => {
+    const met = (g: typeof grid, r: { assignments: typeof res.assignments }) =>
+      computeMetrics(g, r.assignments).redundancyMet ?? 1;
+    const res = await ilpSolve(ctx);
+    expect(res.status).toBe('faisable');
+    // Hameau à 3 drones jugé impossible par la fixture : le solveur doit le dire.
+    expect(res.diagnostics.some((d) => d.includes('redondance'))).toBe(true);
+    expect(met(grid, res)).toBeGreaterThan(0);
+  }, 10_000);
 });
 
 describe('bonus des drones en zone prioritaire', () => {

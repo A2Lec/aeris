@@ -88,17 +88,21 @@ class State {
 }
 
 /**
- * Construction gloutonne : positions imposées, puis chaque couple (portées décroissantes)
- * à sa meilleure position, s'il apporte quelque chose et que l'arrêté le permet.
+ * Construction gloutonne : positions imposées, puis les couples déjà placés par la solution
+ * précédente restent où ils étaient (stabilité), puis chaque autre couple (portées
+ * décroissantes) à sa meilleure position, s'il apporte quelque chose et que l'arrêté le permet.
  */
 function construct(p: Problem): State {
   const s = new State(p);
   p.usable.forEach((u, k) => {
-    if (s.engaged >= p.maxEngaged) return;
-    if (u.fixed) {
-      s.add(k, 0);
-      return;
-    }
+    if (u.fixed && s.engaged < p.maxEngaged) s.add(k, 0);
+  });
+  p.usable.forEach((u, k) => {
+    if (s.engaged >= p.maxEngaged || u.fixed || u.prevIndex < 0) return;
+    if (s.gainAt(k, u.prevIndex) > 0) s.add(k, u.prevIndex);
+  });
+  p.usable.forEach((u, k) => {
+    if (s.choice[k]! >= 0 || u.fixed || s.engaged >= p.maxEngaged) return;
     let best = -1;
     let bestGain = 0;
     for (let j = 0; j < u.candidates.length; j++) {
