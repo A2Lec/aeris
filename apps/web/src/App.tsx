@@ -72,7 +72,7 @@ export function App() {
         </MapView>
         {proposing && <ScenariosPanel />}
         {state && !(proposing && !minimized) && (
-          <Legend withCoverage={!preparing} communes={communes} />
+          <Legend withCoverage={!preparing} communes={communes} pilots={state.mission.pilots} />
         )}
         {error && (
           <p className="toast" role="alert">

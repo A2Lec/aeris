@@ -105,6 +105,37 @@ describe('recuit simulé', () => {
     }
   });
 
+  it('n’affecte qu’un drone par télépilote dans une phase', () => {
+    const resource = mission.resources.find((item) => !item.fixedPosition)!;
+    const alternateModel = drones.find((drone) => drone.id !== resource.droneModelId)!;
+    const duplicatePilotMission = {
+      ...mission,
+      id: 'duplicate-pilot-resources',
+      maxDrones: 2,
+      resources: [
+        { ...resource, id: 'pilot-drone-a' },
+        { ...resource, id: 'pilot-drone-b', droneModelId: alternateModel.id },
+      ],
+    };
+    const ctx = {
+      mission: duplicatePilotMission,
+      catalog: drones,
+      rules: pilotRules,
+      grid: buildGrid(duplicatePilotMission, 0),
+      phase: 0,
+      strategy: 'priorite' as const,
+    };
+    const pilotIds = new Map(
+      duplicatePilotMission.resources.map((item) => [item.id, item.pilotId]),
+    );
+    const expectOneDronePerPilot = (result: ReturnType<typeof greedySolve>) => {
+      const assignedPilots = result.assignments.map((item) => pilotIds.get(item.resourceId));
+      expect(new Set(assignedPilots).size).toBe(assignedPilots.length);
+    };
+
+    expectOneDronePerPilot(greedySolve(ctx));
+  });
+
   it('économie de moyens n’engage pas plus de couples que couverture globale', () => {
     const eco = greedySolve(ctxFor('economie_moyens'));
     const all = greedySolve(ctxFor('couverture_globale'));

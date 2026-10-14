@@ -3,6 +3,7 @@ import { api } from '../../api/client';
 import { useMissionStore } from '../../app/missionStore';
 import { CoupleCard } from '../../components/CoupleCard';
 import { useFocusStore } from '../../components/focus';
+import { pilotColor } from '../../map/colors';
 import { resourceLabel } from '../resourceLabel';
 import { describeEvent } from './events';
 import { METEO_PRESETS, centreZone, meteoDuPreset, modelesAuSol, seuilModele } from './meteo';
@@ -22,6 +23,7 @@ export function LiveLeft() {
   if (!state || !live) return <p className="empty">Connexion au suivi en temps réel…</p>;
 
   const { mission } = state;
+  const pilotIds = mission.pilots.map((pilot) => pilot.id);
   // Un événement peut modifier la mission (disponibilité, zones) : on la recharge ensuite.
   const send = (ev: MissionEvent) =>
     run(async () => {
@@ -61,7 +63,14 @@ export function LiveLeft() {
           <ul className="list reserve">
             {others.map((r) => (
               <li key={r.id}>
-                <b title={r.id}>{resourceLabel(mission, r.id, catalog)}</b>
+                <b className="pilot-name" title={r.id}>
+                  <span
+                    className="pilot-color-dot"
+                    style={{ backgroundColor: pilotColor(r.pilotId, pilotIds) }}
+                    aria-hidden="true"
+                  />
+                  {resourceLabel(mission, r.id, catalog)}
+                </b>
                 {r.available ? (
                   <span className="pill">En réserve</span>
                 ) : (

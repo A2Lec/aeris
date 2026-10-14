@@ -1,4 +1,4 @@
-import type { ConstraintKind, PilotLevel } from '@aeris/shared';
+import type { ConstraintKind } from '@aeris/shared';
 import { SEMANTIC } from '../theme';
 
 /** Palette des couches, tirée des jetons du thème (une couleur = un sens). */
@@ -29,11 +29,12 @@ export const WORK_AREA_STYLE = {
   fillOpacity: 0.03,
 } as const;
 
-/** Couverture par niveau de télépilote : TP1 (1 km) en vert, TP2 (2 km) en bleu. */
-export const LEVEL_COLORS: Record<PilotLevel, string> = {
-  TP1: SEMANTIC.ok,
-  TP2: SEMANTIC.info,
-};
+/** Couleur distincte par télépilote dans l'ordre de la mission. */
+export function pilotColor(pilotId: string, pilotIds: string[]): string {
+  const index = pilotIds.indexOf(pilotId);
+  if (index < 0) return SEMANTIC.neutral;
+  return `hsl(${Math.round((index * 137.508) % 360)} 72% 40%)`;
+}
 
 export const COVERAGE_COLORS = {
   covered: SEMANTIC.info,

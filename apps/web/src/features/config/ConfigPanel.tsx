@@ -2,6 +2,7 @@ import type { MissionInput } from '@aeris/shared';
 import { useState } from 'react';
 import { api } from '../../api/client';
 import { useMissionStore } from '../../app/missionStore';
+import { pilotColor } from '../../map/colors';
 import { resourceLabel } from '../resourceLabel';
 import { useConfigEditorStore } from './store';
 import './config.css';
@@ -150,6 +151,7 @@ export function ConfigPanel() {
 
   const { mission, status } = state;
   const phases = [...Array(mission.phaseCount).keys()];
+  const pilotIds = mission.pilots.map((pilot) => pilot.id);
   const update = (patch: Partial<MissionInput>) =>
     run(async () => {
       const { id: _id, ...input } = mission;
@@ -372,6 +374,10 @@ export function ConfigPanel() {
       </div>
       <div className="config-resource-form">
         <strong>2. Choisir les drones pilotables pour chaque télépilote</strong>
+        <p className="config-help">
+          Un télépilote peut avoir plusieurs modèles associés, mais un seul de ses drones pourra
+          être affecté à la fois au cours d’une phase.
+        </p>
         {!mission.pilots.length && <p className="config-help">Ajoutez d’abord un télépilote.</p>}
         {mission.pilots.map((pilot) => {
           const pilotResources = mission.resources.filter(
@@ -383,6 +389,10 @@ export function ConfigPanel() {
           return (
             <details className="pilot-drone-picker" key={pilot.id}>
               <summary>
+                <span
+                  className="pilot-color-dot"
+                  style={{ backgroundColor: pilotColor(pilot.id, pilotIds) }}
+                />
                 {pilot.name} ({pilot.level}) — {selectedDroneNames || 'Aucun drone sélectionné'}
               </summary>
               <div className="pilot-drone-options">

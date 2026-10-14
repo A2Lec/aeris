@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { api } from '../../api/client';
 import { useMissionStore } from '../../app/missionStore';
+import { pilotColor } from '../../map/colors';
 import { resourceLabel } from '../resourceLabel';
 import { KpiGrid } from '../../components/KpiGrid';
 import { SeparationCard } from '../../components/SeparationCard';
@@ -35,6 +36,7 @@ export function ScenariosPanel() {
 
   if (!state) return null;
   const { mission } = state;
+  const pilotIds = mission.pilots.map((pilot) => pilot.id);
   const labels = columnLabels(proposals);
   const metrics = selected?.metricsByPhase[phase];
 
@@ -135,10 +137,20 @@ export function ScenariosPanel() {
                 <ul className="couples-list">
                   {inPhase.map((a) => {
                     const moved = moves[moveKey(a.resourceId, a.phase)] !== undefined;
+                    const pilotId = mission.resources.find(
+                      (resource) => resource.id === a.resourceId,
+                    )?.pilotId;
                     return (
                       <li key={a.resourceId} className={focusId === a.resourceId ? 'focused' : ''}>
                         <div>
                           <b title={a.resourceId}>
+                            {pilotId && (
+                              <span
+                                className="pilot-color-dot"
+                                style={{ backgroundColor: pilotColor(pilotId, pilotIds) }}
+                                aria-hidden="true"
+                              />
+                            )}{' '}
                             {resourceLabel(mission, a.resourceId, catalog)}
                           </b>
                           <span className="pill">{a.radiusM / 1000} km</span>

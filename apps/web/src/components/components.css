@@ -304,6 +304,19 @@
 .couple header small {
   display: block;
 }
+.pilot-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.pilot-color-dot {
+  display: inline-block;
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  vertical-align: middle;
+}
 .couple.focused {
   border-color: var(--warn);
   box-shadow: 0 0 0 1px var(--warn);
