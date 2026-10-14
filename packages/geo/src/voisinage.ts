@@ -5,7 +5,8 @@
  * moins de calculs (un TP1 de 1 km sur une grille de 100 m : ~400 cellules testées au lieu de
  * toute la zone).
  */
-import type { Cell, Grid } from '@aeris/shared';
+import { bbox, booleanPointInPolygon } from '@turf/turf';
+import type { Assignment, Cell, Grid } from '@aeris/shared';
 import { M_PER_DEG_LAT, distanceM, metersPerDegLng } from './distance';
 
 /** Position de la grille dans l'espace : retrouvée à partir des cellules, la grille ne la porte pas. */
@@ -91,4 +92,29 @@ export function pourChaqueCelluleAPortee(
       if (!cell.forbidden && distanceM(centre, cell.center) <= rayonM) visiter(cell);
     }
   }
+}
+
+/**
+ * Cellules réellement couvertes par un drone : à portée ET dans son secteur s'il en a un.
+ * Le secteur est la zone où le drone évolue (ex. son disque privé d'une zone à hauteur limitée
+ * qu'il contourne) ; sans secteur, tout le disque. Une cellule est dans le secteur si son
+ * centre y tombe (même règle que pour les zones de la grille).
+ */
+export function pourChaqueCelluleDuDrone(
+  grid: Grid,
+  index: IndexGrille,
+  a: Assignment,
+  visiter: (cell: Cell) => void,
+): void {
+  const secteur = a.sector;
+  if (!secteur) {
+    pourChaqueCelluleAPortee(grid, index, a.position.coordinates, a.radiusM, visiter);
+    return;
+  }
+  const [o, s, e, n] = bbox(secteur);
+  pourChaqueCelluleAPortee(grid, index, a.position.coordinates, a.radiusM, (cell) => {
+    const [lng, lat] = cell.center;
+    if (lng < o || lng > e || lat < s || lat > n) return;
+    if (booleanPointInPolygon(cell.center, secteur)) visiter(cell);
+  });
 }
