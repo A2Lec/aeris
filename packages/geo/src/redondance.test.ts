@@ -3,12 +3,7 @@ import { areaM2, makeAssignment } from '@aeris/contracts';
 import { Mission, type LngLat, type PolygonGeom } from '@aeris/shared';
 import { buildGrid } from './grid';
 import { computeMetrics } from './metrics';
-import {
-  couchesRedondance,
-  maxSimultanes,
-  mesurerRedondance,
-  redondanceDesCellules,
-} from './redondance';
+import { couchesRedondance, mesurerRedondance, redondanceDesCellules } from './redondance';
 
 const rect = (o: number, s: number, e: number, n: number): PolygonGeom => ({
   type: 'Polygon',
@@ -119,36 +114,13 @@ describe('mesurerRedondance', () => {
   });
 });
 
-describe('redondance en même temps', () => {
+describe('redondance au pire moment', () => {
   const creneau = (id: string, start: string, end: string) => ({
     ...makeAssignment(id, etang, 1000),
     slot: { start, end },
   });
 
-  it('maxSimultanes : recouvrement, relais, sans créneau', () => {
-    expect(maxSimultanes([])).toBe(0);
-    expect(
-      maxSimultanes([
-        ['10:00', '11:00'],
-        ['10:30', '11:30'],
-      ]),
-    ).toBe(2);
-    expect(
-      maxSimultanes([
-        ['10:00', '11:00'],
-        ['11:00', '12:00'],
-      ]),
-    ).toBe(1);
-    expect(
-      maxSimultanes([
-        ['', '\uffff'],
-        ['10:00', '11:00'],
-        ['10:30', '10:45'],
-      ]),
-    ).toBe(3);
-  });
-
-  it('deux drones qui se relaient sur l’étang : redondance non atteinte', () => {
+  it('deux drones qui se relaient sur l’étang : couvert en permanence, redondance non atteinte', () => {
     const relais = [creneau('a', '10:00', '11:00'), creneau('b', '11:00', '12:00')];
     const red = mesurerRedondance(grid, relais, r2);
     expect(red.redundancyMet).toBe(0);
@@ -156,8 +128,13 @@ describe('redondance en même temps', () => {
     expect(areaM2(couchesRedondance(grid, relais, r2).redundancyMissing)).toBeGreaterThan(0);
   });
 
-  it('deux drones dont les créneaux se recouvrent : redondance atteinte', () => {
-    const ensemble = [creneau('a', '10:00', '11:00'), creneau('b', '10:30', '11:30')];
+  it('créneaux qui ne se recouvrent qu’en partie : il manque un drone une partie du temps', () => {
+    const partiel = [creneau('a', '10:00', '11:00'), creneau('b', '10:30', '11:30')];
+    expect(mesurerRedondance(grid, partiel, r2).redundancyMet).toBe(0);
+  });
+
+  it('deux drones sur le même créneau : redondance atteinte', () => {
+    const ensemble = [creneau('a', '10:00', '11:00'), creneau('b', '10:00', '11:00')];
     expect(mesurerRedondance(grid, ensemble, r2).redundancyMet).toBe(1);
   });
 

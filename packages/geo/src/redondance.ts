@@ -1,8 +1,8 @@
 /**
  * Redondance : une zone prioritaire peut exiger r drones en même temps (r fixé par
  * l'utilisateur, 1 par défaut). Sur chaque cellule on compare r au nombre n de drones qui la
- * voient AU MÊME MOMENT : deux drones dont les créneaux (`slot`) ne se recouvrent pas se
- * relaient, ils ne comptent pas comme deux. Un drone sans créneau vole toute la phase.
+ * voient en même temps, au pire moment de la phase (voir presence.ts) : deux drones qui se
+ * relaient par créneaux ne comptent pas comme deux.
  *   - chevauchement utile    : 2 ≤ n ≤ r (les drones voulus en plus du premier) ;
  *   - chevauchement superflu : n > r (le seul que le solveur doit chercher à réduire) ;
  *   - redondance atteinte    : n drones capables ≥ r, sur les cellules où r ≥ 2 ;
@@ -24,7 +24,8 @@ import {
 } from '@aeris/shared';
 import { fusionner } from './coverage';
 import { zoneActive } from './grid';
-import { indexerGrille, pourChaqueCelluleAPortee } from './voisinage';
+import { presenceAuPireMoment } from './presence';
+import { indexerGrille } from './voisinage';
 
 // TODO(P1) : quand PriorityZone.redundancy et Cell.redundancy existeront dans @aeris/shared,
 // buildGrid remplira cell.redundancy, `redondanceDesCellules` disparaîtra, et les champs de
@@ -72,65 +73,22 @@ export interface CouchesRedondance {
   superfluousOverlap: MultiPolygonGeom;
 }
 
-type Intervalle = [debut: string, fin: string];
-
-/** Sans créneau : toute la phase. Les bornes se comparent comme des chaînes ISO. */
-const TOUTE_LA_PHASE: Intervalle = ['', '\uffff'];
-const intervalle = (a: Assignment): Intervalle =>
-  a.slot ? [a.slot.start, a.slot.end] : TOUTE_LA_PHASE;
-
 /**
- * Plus grand nombre d'intervalles ouverts qui se recouvrent à un même instant (balayage).
- * Deux créneaux qui se touchent (fin de l'un = début de l'autre) ne se recouvrent pas.
- */
-export function maxSimultanes(intervalles: Intervalle[]): number {
-  const evts: [string, number][] = [];
-  for (const [d, f] of intervalles) if (d < f) evts.push([d, 1], [f, -1]);
-  evts.sort((x, y) => (x[0] < y[0] ? -1 : x[0] > y[0] ? 1 : x[1] - y[1]));
-  let courant = 0;
-  let max = 0;
-  for (const [, delta] of evts) {
-    courant += delta;
-    max = Math.max(max, courant);
-  }
-  return max;
-}
-
-/**
- * Par cellule non interdite : n = drones présents en même temps (au pire moment), et
- * n capables = idem parmi ceux qui ont les capacités requises (canServe).
+ * Par cellule non interdite, au pire moment de la phase : n = drones présents, n capables =
+ * drones présents qui ont les capacités requises (canServe).
  */
 function compter(grid: Grid, assignments: Assignment[], opts: MetricsOptions) {
   const index = indexerGrille(grid);
-  const tous = new Uint16Array(grid.cells.length);
-  const capables = new Uint16Array(grid.cells.length);
-  const sert = (a: Assignment, cell: Grid['cells'][number]) =>
-    !opts.canServe || opts.canServe(a.resourceId, cell);
-
-  if (!assignments.some((a) => a.slot)) {
-    // Cas courant, sans créneaux : tout le monde vole en même temps, un simple comptage suffit.
-    for (const a of assignments) {
-      pourChaqueCelluleAPortee(grid, index, a.position.coordinates, a.radiusM, (cell) => {
-        tous[cell.id]++;
-        if (sert(a, cell)) capables[cell.id]++;
-      });
-    }
-    return { index, tous, capables };
-  }
-
-  const presents: Intervalle[][] = grid.cells.map(() => []);
-  const presentsCapables: Intervalle[][] = grid.cells.map(() => []);
-  for (const a of assignments) {
-    pourChaqueCelluleAPortee(grid, index, a.position.coordinates, a.radiusM, (cell) => {
-      presents[cell.id].push(intervalle(a));
-      if (sert(a, cell)) presentsCapables[cell.id].push(intervalle(a));
-    });
-  }
-  for (let i = 0; i < grid.cells.length; i++) {
-    tous[i] = maxSimultanes(presents[i]);
-    capables[i] = maxSimultanes(presentsCapables[i]);
-  }
-  return { index, tous, capables };
+  return {
+    index,
+    tous: presenceAuPireMoment(grid, index, assignments),
+    capables: presenceAuPireMoment(
+      grid,
+      index,
+      assignments,
+      (a, cell) => !opts.canServe || opts.canServe(a.resourceId, cell),
+    ),
+  };
 }
 
 export function mesurerRedondance(
