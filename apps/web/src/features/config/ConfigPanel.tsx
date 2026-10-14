@@ -1,617 +1,680 @@
-import type { MissionInput } from '@aeris/shared';
-import { useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import type { ConstraintKind, MissionInput, MissionState } from '@aeris/shared';
 import { api } from '../../api/client';
 import { useMissionStore } from '../../app/missionStore';
-import { useConfigEditorStore } from './store';
+import { WizardWindow } from '../../components/WizardWindow';
+import { CONSTRAINT_COLORS, PRIORITY_COLORS } from '../../map/colors';
+import { searchPlaces, type Place } from './place';
+import { togglePhase, withPhaseCount, zonePhases } from './phases';
+import { WIZARD_STEPS, useConfigEditorStore, type ConfigDrawMode, type WizardStep } from './store';
 import './config.css';
 
+const MAX_PHASES = 6;
+
+const CONSTRAINT_LABELS: Record<ConstraintKind, string> = {
+  interdite: 'Interdite',
+  hauteur_limitee: 'Hauteur limitée',
+  urbaine: 'Urbaine',
+};
+
+const PRIORITY_LABELS: Record<1 | 2 | 3, string> = { 1: 'Faible', 2: 'Moyenne', 3: 'Maximale' };
+
+/** Enregistre une modification de la mission ouverte (zones, phases, environnement…). */
+export function useMissionUpdate() {
+  const { state, setState, run } = useMissionStore();
+  return (patch: Partial<MissionInput>) => {
+    if (!state) return Promise.resolve(undefined);
+    const { id: _id, ...input } = state.mission;
+    return run(async () =>
+      setState(await api.updateMission(state.mission.id, { ...input, ...patch })),
+    );
+  };
+}
+
+function defaultStep(state?: MissionState, hasArea = false): WizardStep {
+  if (!state) return hasArea ? 1 : 0;
+  return state.status === 'phasage' ? 5 : 2;
+}
+
 /**
- * Étapes « Configuration » et « Phasage ».
- * TODO(P5) :
- *  - saisie de l'arrêté (périmètre, période, nombre max de drones) ;
+ * Planification, une fenêtre par étape, posée sur la carte :
+ * nom et lieu → zone d'intervention et environnement → zones interdites → zones urbaines
+ * → zones prioritaires → phases. La mission est créée dès que la zone est tracée ; chaque
+ * zone dessinée ensuite est enregistrée aussitôt.
  */
 export function ConfigPanel() {
-  const { state, catalog, setState, run, busy } = useMissionStore();
+  const { state, setState, run, busy } = useMissionStore();
   const editor = useConfigEditorStore();
-  const [pilotName, setPilotName] = useState('');
-  const [pilotLevel, setPilotLevel] = useState<'TP1' | 'TP2'>('TP1');
-  const [droneModelId, setDroneModelId] = useState('');
-  const [selectedPilotId, setSelectedPilotId] = useState('');
-  const activateDraw = (mode: Parameters<typeof editor.setDrawMode>[0]) => {
-    editor.setEditing(false);
-    editor.setDrawMode(editor.drawMode === mode ? 'idle' : mode);
-  };
-  const toggleEditing = () => {
-    if (!editor.editing) editor.setDrawMode('idle');
-    editor.setEditing(!editor.editing);
+  const update = useMissionUpdate();
+  const step = editor.step ?? defaultStep(state, !!editor.setupWorkArea);
+  const mission = state?.mission;
+  const name = mission?.name ?? editor.setupName;
+
+  const open = (target: number) =>
+    run(async () => {
+      if (target === 5 && state?.status === 'config')
+        setState(await api.setStatus(state.mission.id, 'phasage'));
+      editor.setStep(target as WizardStep);
+    });
+
+  const createMission = () => {
+    const workArea = editor.setupWorkArea;
+    if (!workArea) return;
+    void run(async () => {
+      setState(
+        await api.createMission({
+          name: editor.setupName.trim(),
+          workArea,
+          environment: editor.setupEnvironment,
+          maxDrones: editor.setupMaxDrones,
+          phaseCount: editor.setupPhaseCount,
+          gridCellM: editor.setupGridCellM,
+          pilots: [],
+          resources: [],
+          priorityZones: [],
+          constraintZones: [],
+        }),
+      );
+      editor.setStep(2);
+    });
   };
 
-  if (!state) {
-    const createMission = () => {
-      const workArea = editor.setupWorkArea;
-      if (!workArea) return;
-      const input: MissionInput = {
-        name: editor.setupName.trim(),
-        workArea,
-        environment: editor.setupEnvironment,
-        maxDrones: editor.setupMaxDrones,
-        phaseCount: editor.setupPhaseCount,
-        gridCellM: editor.setupGridCellM,
-        pilots: [],
-        resources: [],
-        priorityZones: [],
-        constraintZones: [],
-      };
-      void run(async () => {
-        editor.setDrawMode('idle');
-        setState(await api.createMission(input));
-      });
-    };
+  const solve = () =>
+    state &&
+    run(async () => {
+      await api.solve(state.mission.id);
+      setState(await api.getMission(state.mission.id));
+    });
 
-    return (
-      <section>
-        <h2>Créer une mission</h2>
-        <p className="config-help">
-          Renseignez les paramètres, puis dessinez la zone sur la carte. Cliquez sur le premier
-          sommet pour fermer le polygone.
-        </p>
-        <label>
-          Nom de la mission
-          <input
-            type="text"
-            value={editor.setupName}
-            onChange={(event) => editor.setSetupName(event.target.value)}
-            placeholder="Ex. Recherche secteur nord"
-          />
-        </label>
-        <label>
-          Environnement
-          <select
-            value={editor.setupEnvironment}
-            onChange={(event) =>
-              editor.setSetupEnvironment(event.target.value as typeof editor.setupEnvironment)
-            }
-          >
-            <option value="rural">Rural</option>
-            <option value="urbain">Urbain</option>
-          </select>
-        </label>
-        <label>
-          Drones maximum
-          <input
-            type="number"
-            min={0}
-            value={editor.setupMaxDrones}
-            onChange={(event) => editor.setSetupMaxDrones(Number(event.target.value))}
-          />
-        </label>
-        <label>
-          Nombre de phases
-          <input
-            type="number"
-            min={1}
-            max={6}
-            value={editor.setupPhaseCount}
-            onChange={(event) => editor.setSetupPhaseCount(Number(event.target.value))}
-          />
-        </label>
-        <label>
-          Taille des cellules (m)
-          <input
-            type="number"
-            min={25}
-            step={25}
-            value={editor.setupGridCellM}
-            onChange={(event) => editor.setSetupGridCellM(Number(event.target.value))}
-          />
-        </label>
-        <div className="config-draw-tools">
-          <button
-            className={editor.drawMode === 'setupWorkArea' ? 'primary' : ''}
-            onClick={() =>
-              editor.setDrawMode(editor.drawMode === 'setupWorkArea' ? 'idle' : 'setupWorkArea')
-            }
-            disabled={busy}
-          >
-            {editor.setupWorkArea ? 'Redessiner la zone' : 'Dessiner la zone de travail'}
-          </button>
-          {editor.setupWorkArea && <span className="config-ready">Zone dessinée</span>}
-        </div>
+  const back = step > 0 && (
+    <button onClick={() => void open(step - 1)} disabled={busy}>
+      Retour
+    </button>
+  );
+
+  const windows: Record<WizardStep, { intro: string; body: ReactNode; next: ReactNode }> = {
+    0: {
+      intro: 'Nommez l’intervention et indiquez où elle a lieu : la carte s’y place.',
+      body: <NameAndPlace />,
+      next: (
         <button
           className="primary"
-          onClick={createMission}
-          disabled={
-            busy ||
-            !editor.setupName.trim() ||
-            !editor.setupWorkArea ||
-            !Number.isInteger(editor.setupMaxDrones) ||
-            editor.setupMaxDrones < 0 ||
-            !Number.isInteger(editor.setupPhaseCount) ||
-            editor.setupPhaseCount < 1 ||
-            editor.setupPhaseCount > 6 ||
-            !Number.isFinite(editor.setupGridCellM) ||
-            editor.setupGridCellM < 25
+          disabled={busy || !name.trim()}
+          onClick={() =>
+            void (mission && name.trim() !== mission.name
+              ? update({ name: name.trim() }).then(() => open(1))
+              : open(1))
           }
         >
-          Créer la mission
+          Continuer
         </button>
-      </section>
-    );
-  }
-
-  const { mission, status } = state;
-  const phases = [...Array(mission.phaseCount).keys()];
-  const update = (patch: Partial<MissionInput>) =>
-    run(async () => {
-      const { id: _id, ...input } = mission;
-      setState(await api.updateMission(mission.id, { ...input, ...patch }));
-    });
-  const addPilot = () => {
-    const name = pilotName.trim();
-    const pilotId = crypto.randomUUID();
-    if (!name) return;
-    void run(async () => {
-      const { id: _id, ...input } = mission;
-      const updated = await api.updateMission(mission.id, {
-        ...input,
-        pilots: [...mission.pilots, { id: pilotId, name, level: pilotLevel }],
-      });
-      setState(updated);
-      setSelectedPilotId(pilotId);
-    });
-    setPilotName('');
-  };
-  const addPilotDrone = () => {
-    const modelId = droneModelId || catalog?.drones[0]?.id;
-    if (
-      !selectedPilotId ||
-      !mission.pilots.some((pilot) => pilot.id === selectedPilotId) ||
-      !modelId ||
-      !catalog?.drones.some((drone) => drone.id === modelId) ||
-      mission.resources.some(
-        (resource) => resource.pilotId === selectedPilotId && resource.droneModelId === modelId,
-      )
-    )
-      return;
-
-    void update({
-      resources: [
-        ...mission.resources,
-        {
-          id: `r-${crypto.randomUUID().slice(0, 8)}`,
-          pilotId: selectedPilotId,
-          droneModelId: modelId,
-          available: true,
-        },
-      ],
-    });
-  };
-  const activePhases = (zone: (typeof mission.priorityZones)[number]) =>
-    zone.phases?.length
-      ? zone.phases.filter((phase) => phase >= 0 && phase < mission.phaseCount)
-      : phases;
-  const toggleZonePhase = (zoneId: string, phase: number, checked: boolean) => {
-    const zone = mission.priorityZones.find((item) => item.id === zoneId);
-    if (!zone) return;
-
-    const current = activePhases(zone);
-    const next = checked
-      ? [...new Set([...current, phase])].sort((a, b) => a - b)
-      : current.filter((item) => item !== phase);
-    if (!next.length) return;
-
-    update({
-      priorityZones: mission.priorityZones.map((item) =>
-        item.id === zoneId
-          ? { ...item, phases: next.length === phases.length ? undefined : next }
-          : item,
       ),
-    });
+    },
+    1: {
+      intro:
+        'Tracez le périmètre de l’intervention sur la carte : cliquez pour placer chaque sommet, puis sur le premier pour fermer.',
+      body: <AreaFields />,
+      next: mission ? (
+        <button className="primary" disabled={busy} onClick={() => void open(2)}>
+          Continuer
+        </button>
+      ) : (
+        <button
+          className="primary"
+          disabled={busy || !editor.setupWorkArea || !editor.setupName.trim()}
+          onClick={createMission}
+        >
+          Continuer
+        </button>
+      ),
+    },
+    2: {
+      intro:
+        'Tracez les espaces où les drones ne doivent pas voler, ou seulement à hauteur réduite. Étape facultative.',
+      body: <ConstraintFields kinds={['interdite', 'hauteur_limitee']} />,
+      next: (
+        <button className="primary" disabled={busy} onClick={() => void open(3)}>
+          Continuer
+        </button>
+      ),
+    },
+    3: {
+      intro:
+        'Tracez les secteurs bâtis : les hauteurs de vol y sont plus basses. Étape facultative.',
+      body: <ConstraintFields kinds={['urbaine']} />,
+      next: (
+        <button className="primary" disabled={busy} onClick={() => void open(4)}>
+          Continuer
+        </button>
+      ),
+    },
+    4: {
+      intro:
+        'Tracez les secteurs à surveiller en priorité et donnez à chacun son niveau d’importance.',
+      body: <PriorityFields />,
+      next: (
+        <button className="primary" disabled={busy} onClick={() => void open(5)}>
+          Continuer
+        </button>
+      ),
+    },
+    5: {
+      intro:
+        'Découpez l’intervention en phases, puis indiquez dans quelles phases chaque zone prioritaire doit être couverte.',
+      body: <PhaseFields />,
+      next: (
+        <button className="primary" disabled={busy} onClick={() => void solve()}>
+          {busy ? 'Calcul en cours…' : 'Calculer les propositions'}
+        </button>
+      ),
+    },
   };
-  const modelName = (id: string) => catalog?.drones.find((d) => d.id === id)?.name ?? id;
+  const current = windows[step];
 
   return (
-    <section>
-      <h2>{mission.name}</h2>
-      <h3>Zone de travail et espaces</h3>
-      <p className="config-help">
-        Dessinez les polygones directement sur la carte. Cliquez pour placer les sommets, puis sur
-        le premier sommet pour fermer le polygone.
-      </p>
-      <div className="config-draw-tools">
-        <button
-          className={editor.drawMode === 'workArea' ? 'primary' : ''}
-          onClick={() => activateDraw('workArea')}
-          disabled={busy || editor.editing}
-        >
-          Définir la zone de travail
-        </button>
-        <button className={editor.editing ? 'primary' : ''} onClick={toggleEditing} disabled={busy}>
-          {editor.editing ? 'Terminer la modification' : 'Modifier les polygones'}
-        </button>
-      </div>
+    <WizardWindow
+      steps={WIZARD_STEPS}
+      current={step}
+      canOpen={(i) => !busy && (i <= 1 || !!mission)}
+      onOpen={(i) => void open(i)}
+      intro={current.intro}
+      centered={step === 0}
+      footer={
+        <>
+          {back}
+          {current.next}
+        </>
+      }
+    >
+      {current.body}
+    </WizardWindow>
+  );
+}
+
+/** Fenêtre 1 : nom de l'intervention et lieu pour centrer la carte. */
+function NameAndPlace() {
+  const { state } = useMissionStore();
+  const editor = useConfigEditorStore();
+  const update = useMissionUpdate();
+  const [draft, setDraft] = useState(state?.mission.name);
+  const value = state ? (draft ?? state.mission.name) : editor.setupName;
+
+  return (
+    <>
       <label>
-        Nom de la prochaine zone
+        Nom de l’intervention
         <input
           type="text"
-          value={editor.zoneName}
-          onChange={(event) => editor.setZoneName(event.target.value)}
-          placeholder="Nom de zone"
+          value={value}
+          autoFocus
+          onChange={(e) => (state ? setDraft(e.target.value) : editor.setSetupName(e.target.value))}
+          onBlur={() =>
+            state && draft?.trim() && draft !== state.mission.name && update({ name: draft.trim() })
+          }
+          placeholder="Ex. Recherche de personne, forêt de Fontainebleau"
         />
       </label>
-      <label>
-        Priorité
-        <select
-          value={editor.priorityLevel}
-          onChange={(event) => editor.setPriorityLevel(Number(event.target.value) as 1 | 2 | 3)}
-        >
-          <option value={1}>1 — faible</option>
-          <option value={2}>2 — moyenne</option>
-          <option value={3}>3 — maximale</option>
-        </select>
-      </label>
-      <div className="config-draw-tools">
-        <button
-          className={editor.drawMode === 'priority' ? 'primary' : ''}
-          onClick={() => activateDraw('priority')}
-          disabled={busy || editor.editing}
-        >
-          Ajouter une zone prioritaire
-        </button>
-        <select
-          aria-label="Type de contrainte"
-          value={editor.constraintKind}
-          onChange={(event) =>
-            editor.setConstraintKind(event.target.value as typeof editor.constraintKind)
-          }
-        >
-          <option value="interdite">Zone interdite</option>
-          <option value="hauteur_limitee">Hauteur limitée</option>
-          <option value="urbaine">Zone urbaine</option>
-        </select>
-        <button
-          className={editor.drawMode === 'constraint' ? 'primary' : ''}
-          onClick={() => activateDraw('constraint')}
-          disabled={busy || editor.editing}
-        >
-          Ajouter une contrainte
-        </button>
-      </div>
-      {editor.drawMode !== 'idle' && (
-        <p className="config-help">
-          Mode de dessin actif : terminez le polygone sur la carte ou recliquez sur le bouton pour
-          annuler.
+      <PlaceSearch />
+    </>
+  );
+}
+
+function PlaceSearch() {
+  const { setupPlace, setSetupPlace } = useConfigEditorStore();
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<Place[]>([]);
+  const [error, setError] = useState<string>();
+  const pending = useRef<AbortController>(undefined);
+
+  useEffect(() => {
+    const q = query.trim();
+    pending.current?.abort();
+    if (q.length < 3) {
+      setResults([]);
+      return;
+    }
+    const controller = new AbortController();
+    pending.current = controller;
+    const timer = setTimeout(() => {
+      searchPlaces(q, controller.signal)
+        .then((places) => {
+          setResults(places);
+          setError(places.length ? undefined : 'Aucun lieu trouvé : essayez le nom de la commune.');
+        })
+        .catch((e: unknown) => {
+          if ((e as Error).name !== 'AbortError')
+            setError('Recherche indisponible : déplacez la carte à la main à l’étape suivante.');
+        });
+    }, 300);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [query]);
+
+  const choose = (place: Place) => {
+    setSetupPlace(place);
+    setQuery('');
+    setResults([]);
+  };
+
+  return (
+    <div className="wizard-field place-search">
+      <label htmlFor="place-query">Lieu de l’intervention</label>
+      <input
+        id="place-query"
+        type="search"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        onKeyDown={(e) => e.key === 'Enter' && results[0] && choose(results[0])}
+        placeholder="Commune, lieu-dit ou adresse"
+        autoComplete="off"
+        aria-describedby="place-status"
+      />
+      {results.length > 0 && (
+        <ul className="place-results" role="listbox" aria-label="Lieux trouvés">
+          {results.map((p) => (
+            <li key={`${p.label}-${p.lng}-${p.lat}`}>
+              <button role="option" aria-selected={false} onClick={() => choose(p)}>
+                <b>{p.label}</b>
+                {p.context && <small>{p.context}</small>}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <p id="place-status" className="place-status" role="status">
+        {error ??
+          (setupPlace ? (
+            <>
+              Carte centrée sur <b>{setupPlace.label}</b>
+            </>
+          ) : (
+            'Facultatif : sans lieu, vous placerez la carte vous-même.'
+          ))}
+      </p>
+    </div>
+  );
+}
+
+/** Bouton qui lance (ou annule) le tracé d'un polygone sur la carte. */
+function DrawButton({
+  mode,
+  label,
+  redrawLabel,
+  done,
+  onBefore,
+}: {
+  mode: ConfigDrawMode;
+  label: string;
+  redrawLabel?: string;
+  done?: boolean;
+  onBefore?: () => void;
+}) {
+  const { drawMode, setDrawMode, setEditing } = useConfigEditorStore();
+  const busy = useMissionStore((s) => s.busy);
+  const active = drawMode === mode;
+  return (
+    <>
+      <button
+        className={`draw-button ${active ? 'active' : ''}`}
+        aria-pressed={active}
+        disabled={busy}
+        onClick={() => {
+          setEditing(false);
+          onBefore?.();
+          setDrawMode(active ? 'idle' : mode);
+        }}
+      >
+        <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+          <path
+            d="M2 12l3-9 8 3-2 8z"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinejoin="round"
+          />
+        </svg>
+        {active ? 'Annuler le tracé' : done && redrawLabel ? redrawLabel : label}
+      </button>
+      {active && (
+        <p className="draw-hint" role="status">
+          Cliquez sur la carte pour placer les sommets, puis sur le premier sommet pour fermer la
+          zone.
         </p>
       )}
+    </>
+  );
+}
+
+/** Retouche des tracés existants : on déplace les sommets directement sur la carte. */
+function EditToggle() {
+  const { editing, setEditing, setDrawMode } = useConfigEditorStore();
+  const busy = useMissionStore((s) => s.busy);
+  return (
+    <button
+      className={`draw-button ${editing ? 'active' : ''}`}
+      aria-pressed={editing}
+      disabled={busy}
+      onClick={() => {
+        setDrawMode('idle');
+        setEditing(!editing);
+      }}
+    >
+      {editing ? 'Terminer la retouche' : 'Retoucher les tracés sur la carte'}
+    </button>
+  );
+}
+
+/** Zone d'intervention, environnement et plafond de l'arrêté. */
+export function AreaFields() {
+  const { state } = useMissionStore();
+  const editor = useConfigEditorStore();
+  const update = useMissionUpdate();
+  const mission = state?.mission;
+  const environment = mission?.environment ?? editor.setupEnvironment;
+  const maxDrones = mission?.maxDrones ?? editor.setupMaxDrones;
+
+  return (
+    <>
+      <DrawButton
+        mode={mission ? 'workArea' : 'setupWorkArea'}
+        label="Tracer la zone d’intervention"
+        redrawLabel="Retracer la zone d’intervention"
+        done={!!mission || !!editor.setupWorkArea}
+      />
+      {mission && <EditToggle />}
+      {!mission && editor.setupWorkArea && (
+        <p className="config-ready">Zone d’intervention tracée</p>
+      )}
+
+      <div className="wizard-field">
+        <span id="env-label">Type d’environnement</span>
+        <div className="segmented" role="group" aria-labelledby="env-label">
+          {(['rural', 'urbain'] as const).map((env) => (
+            <button
+              key={env}
+              className={environment === env ? 'active' : ''}
+              aria-pressed={environment === env}
+              onClick={() =>
+                mission ? void update({ environment: env }) : editor.setSetupEnvironment(env)
+              }
+            >
+              {env === 'rural' ? 'Rural' : 'Urbain'}
+            </button>
+          ))}
+        </div>
+        <small className="hint">
+          Fixe les hauteurs de vol autorisées pour chaque niveau de télépilote.
+        </small>
+      </div>
 
       <label>
-        Drones max (arrêté)
+        Drones maximum autorisés par l’arrêté
         <input
           type="number"
           min={0}
-          value={mission.maxDrones}
-          onChange={(e) => update({ maxDrones: Number(e.target.value) })}
+          value={maxDrones}
+          onChange={(e) => {
+            const n = Math.max(0, Math.floor(Number(e.target.value)));
+            if (mission) void update({ maxDrones: n });
+            else editor.setSetupMaxDrones(n);
+          }}
         />
       </label>
+    </>
+  );
+}
 
-      {status === 'phasage' && (
-        <label>
-          Nombre de phases
-          <input
-            type="number"
-            min={1}
-            max={6}
-            value={mission.phaseCount}
-            onChange={(event) => {
-              const phaseCount = Number(event.target.value);
-              if (!Number.isInteger(phaseCount) || phaseCount < 1 || phaseCount > 6) return;
+/** Zones contraintes d'un ou plusieurs types : tracé, liste, suppression. */
+export function ConstraintFields({ kinds }: { kinds: ConstraintKind[] }) {
+  const { state, busy } = useMissionStore();
+  const editor = useConfigEditorStore();
+  const update = useMissionUpdate();
+  const zones = state?.mission.constraintZones.filter((z) => kinds.includes(z.kind)) ?? [];
+  const kind = kinds.includes(editor.constraintKind) ? editor.constraintKind : kinds[0];
+  const count = zones.length;
+  const { setZoneName } = editor;
+  useEffect(() => setZoneName(''), [count, setZoneName]);
+  if (!state) return null;
 
-              update({
-                phaseCount,
-                priorityZones: mission.priorityZones.map((zone) => {
-                  if (!zone.phases?.length) return zone;
-                  const selected = zone.phases.filter((phase) => phase < phaseCount);
-                  const validPhases = selected.length ? selected : [0];
-                  return {
-                    ...zone,
-                    phases: validPhases.length === phaseCount ? undefined : validPhases,
-                  };
-                }),
-              });
-            }}
-          />
-        </label>
+  return (
+    <>
+      {kinds.length > 1 && (
+        <div className="wizard-field">
+          <span id="kind-label">Type de zone</span>
+          <div className="segmented" role="group" aria-labelledby="kind-label">
+            {kinds.map((k) => (
+              <button
+                key={k}
+                className={kind === k ? 'active' : ''}
+                aria-pressed={kind === k}
+                onClick={() => editor.setConstraintKind(k)}
+              >
+                {CONSTRAINT_LABELS[k]}
+              </button>
+            ))}
+          </div>
+        </div>
       )}
+      <label>
+        Nom de la zone
+        <input
+          type="text"
+          value={editor.zoneName}
+          onChange={(e) => editor.setZoneName(e.target.value)}
+          placeholder={`${CONSTRAINT_LABELS[kind]} ${count + 1}`}
+        />
+      </label>
+      <DrawButton
+        mode="constraint"
+        label={`Tracer une zone ${CONSTRAINT_LABELS[kind].toLowerCase()}`}
+        onBefore={() => {
+          editor.setConstraintKind(kind);
+          if (!editor.zoneName.trim())
+            editor.setZoneName(`${CONSTRAINT_LABELS[kind]} ${count + 1}`);
+        }}
+      />
+      <ZoneList
+        empty="Aucune zone tracée."
+        zones={zones.map((z) => ({
+          id: z.id,
+          name: z.name,
+          color: CONSTRAINT_COLORS[z.kind],
+          detail: kinds.length > 1 ? CONSTRAINT_LABELS[z.kind] : undefined,
+        }))}
+        disabled={busy}
+        onRemove={(id) =>
+          update({ constraintZones: state.mission.constraintZones.filter((z) => z.id !== id) })
+        }
+      />
+      {count > 0 && <EditToggle />}
+    </>
+  );
+}
 
-      <h3>Couples télépilote / drone</h3>
-      <div className="config-resource-form">
-        <strong>1. Ajouter un télépilote</strong>
-        <label>
-          Nom du télépilote
-          <input
-            type="text"
-            value={pilotName}
-            onChange={(event) => setPilotName(event.target.value)}
-            placeholder="Nom"
-          />
-        </label>
-        <label>
-          Niveau
-          <select
-            value={pilotLevel}
-            onChange={(event) => setPilotLevel(event.target.value as typeof pilotLevel)}
-          >
-            <option value="TP1">TP1</option>
-            <option value="TP2">TP2</option>
-          </select>
-        </label>
-        <button onClick={addPilot} disabled={busy || !pilotName.trim()}>
-          Ajouter le télépilote
-        </button>
-      </div>
-      <div className="config-resource-form">
-        <strong>2. Choisir les drones pilotables</strong>
-        <label>
-          Télépilote
-          <select
-            value={selectedPilotId || mission.pilots[0]?.id || ''}
-            onChange={(event) => setSelectedPilotId(event.target.value)}
-            disabled={!mission.pilots.length}
-          >
-            {mission.pilots.map((pilot) => (
-              <option key={pilot.id} value={pilot.id}>
-                {pilot.name} ({pilot.level})
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Drone pilotable
-          <select
-            value={droneModelId || catalog?.drones[0]?.id || ''}
-            onChange={(event) => setDroneModelId(event.target.value)}
-            disabled={!catalog?.drones.length}
-          >
-            {catalog?.drones.map((drone) => (
-              <option key={drone.id} value={drone.id}>
-                {drone.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <button
-          onClick={addPilotDrone}
-          disabled={
-            busy ||
-            !mission.pilots.length ||
-            !catalog?.drones.length ||
-            mission.resources.some(
-              (resource) =>
-                resource.pilotId === (selectedPilotId || mission.pilots[0]?.id) &&
-                resource.droneModelId === (droneModelId || catalog?.drones[0]?.id),
-            )
-          }
-        >
-          Associer ce drone au pilote
-        </button>
-      </div>
-      <h4>Télépilotes</h4>
-      <ul className="list">
-        {mission.pilots.map((pilot) => {
-          const hasResources = mission.resources.some((resource) => resource.pilotId === pilot.id);
-          return (
-            <li key={pilot.id}>
-              {pilot.name} ({pilot.level})
-              <button
-                className="small"
-                onClick={() => {
-                  void update({ pilots: mission.pilots.filter((item) => item.id !== pilot.id) });
-                  if (selectedPilotId === pilot.id) setSelectedPilotId('');
-                }}
-                disabled={busy || hasResources}
-                aria-label={`Supprimer le télépilote ${pilot.name}`}
-                title={hasResources ? 'Supprimez d’abord ses associations drone' : undefined}
-              >
-                Supprimer
-              </button>
-            </li>
-          );
-        })}
-      </ul>
-      <ul className="list">
-        {mission.resources.map((r) => {
-          const p = mission.pilots.find((x) => x.id === r.pilotId);
-          return (
-            <li key={r.id}>
-              <b>{r.id}</b> {p?.name} ({p?.level}) — {modelName(r.droneModelId)}
-              <label className="resource-availability">
-                <input
-                  type="checkbox"
-                  checked={r.available}
-                  disabled={busy}
-                  onChange={(event) =>
-                    update({
-                      resources: mission.resources.map((resource) =>
-                        resource.id === r.id
-                          ? { ...resource, available: event.currentTarget.checked }
-                          : resource,
-                      ),
-                    })
-                  }
-                />
-                Disponible
-              </label>
-              <button
-                className="small"
-                onClick={() =>
-                  update({
-                    pilots: mission.pilots.filter(
-                      (pilot) =>
-                        pilot.id !== r.pilotId ||
-                        mission.resources.some(
-                          (resource) => resource.pilotId === pilot.id && resource.id !== r.id,
-                        ),
-                    ),
-                    resources: mission.resources.filter((resource) => resource.id !== r.id),
-                  })
-                }
-                disabled={busy}
-                aria-label={`Supprimer le couple ${r.id}`}
-              >
-                Supprimer
-              </button>
-              {r.allowedArea && (
-                <>
-                  <em> · zone limite</em>
-                  <button
-                    className="small"
-                    onClick={() =>
-                      update({
-                        resources: mission.resources.map((resource) => {
-                          if (resource.id !== r.id) return resource;
-                          const { allowedArea: _allowedArea, ...rest } = resource;
-                          return rest;
-                        }),
-                      })
-                    }
-                    disabled={busy}
-                    aria-label={`Supprimer la zone limite de ${r.id}`}
-                  >
-                    Supprimer la zone
-                  </button>
-                </>
-              )}
-              {r.fixedPosition && <em> · position imposée</em>}
-            </li>
-          );
-        })}
-        {mission.resources.length > 0 && (
-          <li>
-            <label>
-              Couple à limiter
-              <select
-                value={editor.resourceId || mission.resources[0].id}
-                onChange={(event) => editor.setResourceId(event.target.value)}
-              >
-                {mission.resources.map((resource) => (
-                  <option key={resource.id} value={resource.id}>
-                    {resource.id}
-                  </option>
-                ))}
-              </select>
-            </label>
+/** Zones prioritaires : niveau d'importance, tracé, liste. */
+export function PriorityFields() {
+  const { state, busy } = useMissionStore();
+  const editor = useConfigEditorStore();
+  const update = useMissionUpdate();
+  const zones = state?.mission.priorityZones ?? [];
+  const count = zones.length;
+  const { setZoneName } = editor;
+  useEffect(() => setZoneName(''), [count, setZoneName]);
+  if (!state) return null;
+
+  return (
+    <>
+      <div className="wizard-field">
+        <span id="level-label">Niveau de priorité</span>
+        <div className="segmented" role="group" aria-labelledby="level-label">
+          {([1, 2, 3] as const).map((level) => (
             <button
-              className={editor.drawMode === 'resourceArea' ? 'primary' : ''}
-              onClick={() => {
-                editor.setResourceId(editor.resourceId || mission.resources[0].id);
-                activateDraw('resourceArea');
-              }}
-              disabled={busy || editor.editing}
+              key={level}
+              className={editor.priorityLevel === level ? 'active' : ''}
+              aria-pressed={editor.priorityLevel === level}
+              onClick={() => editor.setPriorityLevel(level)}
             >
-              Dessiner / remplacer la zone limite
+              {level} {PRIORITY_LABELS[level]}
             </button>
-          </li>
-        )}
-      </ul>
+          ))}
+        </div>
+      </div>
+      <label>
+        Nom de la zone
+        <input
+          type="text"
+          value={editor.zoneName}
+          onChange={(e) => editor.setZoneName(e.target.value)}
+          placeholder={`Zone prioritaire ${count + 1}`}
+        />
+      </label>
+      <DrawButton mode="priority" label="Tracer une zone prioritaire" />
+      <ZoneList
+        empty="Aucune zone prioritaire : le solveur couvrira la zone d’intervention de façon uniforme."
+        zones={zones.map((z) => ({
+          id: z.id,
+          name: z.name,
+          color: PRIORITY_COLORS[z.level],
+          detail: `Priorité ${z.level}`,
+        }))}
+        disabled={busy}
+        onRemove={(id) =>
+          update({ priorityZones: state.mission.priorityZones.filter((z) => z.id !== id) })
+        }
+      />
+      {count > 0 && <EditToggle />}
+    </>
+  );
+}
 
-      <h3>{status === 'phasage' ? 'Affectation aux phases' : 'Zones prioritaires'}</h3>
-      {status === 'phasage' && (
-        <p className="config-help">
-          Choisissez les phases actives pour chaque zone. Une zone doit rester active dans au moins
-          une phase.
-        </p>
-      )}
-      <ul className="list">
-        {mission.priorityZones.map((z) => (
-          <li key={z.id}>
-            P{z.level} — {z.name}
-            {status === 'phasage' ? (
-              <div className="zone-phases" aria-label={`Phases actives pour ${z.name}`}>
-                {phases.map((phase) => {
-                  const selected = activePhases(z);
-                  const checked = selected.includes(phase);
-                  return (
-                    <label key={phase} className="zone-phase">
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        disabled={busy || (checked && selected.length === 1)}
-                        onChange={(event) =>
-                          toggleZonePhase(z.id, phase, event.currentTarget.checked)
-                        }
-                      />
-                      Phase {phase + 1}
-                    </label>
-                  );
-                })}
-                {!z.phases?.length && <span className="config-help">Toutes les phases</span>}
-              </div>
-            ) : (
-              <em>
-                {' '}
-                ·{' '}
-                {z.phases?.length
-                  ? `Phase(s) ${activePhases(z)
-                      .map((phase) => phase + 1)
-                      .join(', ')}`
-                  : 'Toutes les phases'}
-              </em>
-            )}
+function ZoneList({
+  zones,
+  empty,
+  disabled,
+  onRemove,
+}: {
+  zones: { id: string; name: string; color: string; detail?: string }[];
+  empty: string;
+  disabled: boolean;
+  onRemove: (id: string) => void;
+}) {
+  return (
+    <ul className="zone-list">
+      {zones.length === 0 && <li className="empty">{empty}</li>}
+      {zones.map((z) => (
+        <li key={z.id}>
+          <span className="swatch" style={{ color: z.color }} aria-hidden="true" />
+          <span className="zone-name">{z.name}</span>
+          {z.detail && <small className="hint">{z.detail}</small>}
+          <button
+            className="small"
+            disabled={disabled}
+            onClick={() => onRemove(z.id)}
+            aria-label={`Supprimer ${z.name}`}
+          >
+            Supprimer
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** Nombre de phases, puis présence de chaque zone prioritaire par phase. */
+function PhaseFields() {
+  const { state, busy } = useMissionStore();
+  const update = useMissionUpdate();
+  if (!state) return null;
+  const { mission } = state;
+  const phases = [...Array(mission.phaseCount).keys()];
+
+  return (
+    <>
+      <div className="wizard-field">
+        <span id="phase-count-label">Nombre de phases</span>
+        <div className="segmented" role="group" aria-labelledby="phase-count-label">
+          {[...Array(MAX_PHASES).keys()].map((i) => (
             <button
-              className="small"
-              onClick={() =>
-                update({ priorityZones: mission.priorityZones.filter((zone) => zone.id !== z.id) })
-              }
+              key={i}
+              className={mission.phaseCount === i + 1 ? 'active' : ''}
+              aria-pressed={mission.phaseCount === i + 1}
               disabled={busy}
-              aria-label={`Supprimer ${z.name}`}
-            >
-              Supprimer
-            </button>
-          </li>
-        ))}
-      </ul>
-      <h3>Contraintes</h3>
-      <ul className="list">
-        {mission.constraintZones.map((zone) => (
-          <li key={zone.id}>
-            {zone.name} — {zone.kind}
-            <button
-              className="small"
               onClick={() =>
                 update({
-                  constraintZones: mission.constraintZones.filter((item) => item.id !== zone.id),
+                  phaseCount: i + 1,
+                  priorityZones: withPhaseCount(mission.priorityZones, i + 1),
                 })
               }
-              disabled={busy}
-              aria-label={`Supprimer ${zone.name}`}
             >
-              Supprimer
+              {i + 1}
             </button>
-          </li>
-        ))}
-      </ul>
-
-      <div className="actions">
-        {status === 'config' ? (
-          <button
-            onClick={() => run(async () => setState(await api.setStatus(mission.id, 'phasage')))}
-          >
-            Phasage →
-          </button>
-        ) : (
-          <button
-            onClick={() =>
-              run(async () => {
-                await api.solve(mission.id);
-                setState(await api.getMission(mission.id));
-              })
-            }
-            disabled={busy}
-          >
-            {busy ? 'Calcul…' : 'Calculer les propositions →'}
-          </button>
-        )}
+          ))}
+        </div>
       </div>
-    </section>
+
+      {mission.priorityZones.length === 0 ? (
+        <p className="hint">Aucune zone prioritaire à répartir entre les phases.</p>
+      ) : (
+        <div className="phase-grid-wrap">
+          <table className="phase-grid">
+            <caption className="sr-only">Présence des zones prioritaires par phase</caption>
+            <thead>
+              <tr>
+                <th scope="col">Zone</th>
+                {phases.map((p) => (
+                  <th key={p} scope="col">
+                    Phase {p + 1}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {mission.priorityZones.map((zone) => {
+                const active = zonePhases(zone, mission.phaseCount);
+                return (
+                  <tr key={zone.id}>
+                    <th scope="row">
+                      <span
+                        className="swatch"
+                        style={{ color: PRIORITY_COLORS[zone.level] }}
+                        aria-hidden="true"
+                      />
+                      {zone.name}
+                    </th>
+                    {phases.map((p) => {
+                      const checked = active.includes(p);
+                      return (
+                        <td key={p}>
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            disabled={busy || (checked && active.length === 1)}
+                            aria-label={`${zone.name}, phase ${p + 1}`}
+                            onChange={(e) =>
+                              update({
+                                priorityZones: mission.priorityZones.map((z) =>
+                                  z.id === zone.id
+                                    ? togglePhase(z, p, e.currentTarget.checked, mission.phaseCount)
+                                    : z,
+                                ),
+                              })
+                            }
+                          />
+                        </td>
+                      );
+                    })}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {mission.phaseCount > 1 && (
+        <p className="hint">La carte montre les zones de la phase choisie dans le bandeau.</p>
+      )}
+    </>
   );
 }

@@ -63,3 +63,134 @@
   font-size: 13px;
   color: var(--text-2);
 }
+
+/* ─── Reprise d'une intervention enregistrée (ResumeWizard) ─────────────── */
+
+.resume-project {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--surface-2);
+}
+.resume-project small {
+  color: var(--text-2);
+}
+
+.means-summary {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  margin: 0;
+}
+.means-summary .pill {
+  margin-left: auto;
+}
+
+.wizard-body .resume-couples {
+  max-height: 34vh;
+}
+.wizard-body .resume-couples li.pilot-row {
+  display: block;
+  padding: 8px 10px;
+}
+.pilot-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.couple-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 3px 0 3px 2px;
+  font-weight: 400;
+  cursor: pointer;
+}
+.couple-row input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--primary);
+}
+.couple-row > span:first-of-type {
+  flex: 1;
+}
+
+.add-couple {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 12px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.add-couple legend {
+  padding: 0 4px;
+  font-weight: 600;
+}
+.add-couple label,
+.add-pilot label {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  margin: 0;
+  font-weight: 500;
+}
+.add-pilot {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: end;
+  gap: 8px;
+}
+.add-pilot .segmented {
+  width: auto;
+}
+.add-couple > button {
+  align-self: flex-start;
+}
+
+.weather-source {
+  margin: 0;
+  color: var(--text-2);
+  font-size: 12px;
+}
+.weather-source.caveat {
+  color: var(--warn-text);
+}
+.weather-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.weather-field {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  margin: 0;
+  font-weight: 500;
+}
+.with-unit {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.with-unit small {
+  color: var(--text-2);
+  min-width: 30px;
+}
+.grounded {
+  margin: 6px 0;
+  padding-left: 18px;
+}
+.wizard-body .resume-step {
+  margin: 0;
+}

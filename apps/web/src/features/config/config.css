@@ -1,83 +1,92 @@
-input[type='text'],
-select {
-  max-width: 180px;
-  padding: 4px 6px;
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  background: #fff;
-  font: inherit;
-}
-
-.config-help {
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.45;
-}
-
-.config-draw-tools {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-  margin: 8px 0;
-}
-
-.config-draw-tools button {
-  font-size: 12px;
-}
+/* Planification pas à pas : compléments propres à la configuration (voir components/wizard.css). */
 
 .config-ready {
-  align-self: center;
-  color: var(--ok);
+  margin: 0;
+  color: var(--ok-text);
   font-size: 12px;
+  font-weight: 500;
 }
 
-.config-resource-form {
-  display: grid;
-  gap: 6px;
-  border: 1px solid var(--line);
+/* Recherche du lieu : la liste de résultats s'ouvre sous le champ. */
+.place-search {
+  position: relative;
+}
+.place-results {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  border: 1px solid var(--border);
   border-radius: 6px;
-  padding: 8px;
-  margin: 8px 0;
+  background: var(--surface);
+  box-shadow: 0 6px 18px rgb(15 23 42 / 0.12);
 }
-
-.config-resource-form button {
-  justify-self: start;
-}
-
-.config-resource-form strong {
-  font-size: 12px;
-}
-
-.resource-availability {
-  display: inline-flex;
-  justify-content: flex-start;
-  gap: 4px;
-  width: auto;
-  margin: 0 0 0 8px;
-  font-size: 12px;
-}
-
-.resource-availability input {
-  margin: 0;
-}
-
-.zone-phases {
+.place-results button {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin: 6px 0;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  text-align: left;
+  font-weight: 400;
+}
+.place-results button:hover,
+.place-results button:focus-visible {
+  background: var(--surface-2);
+}
+.place-results small {
+  color: var(--text-2);
+}
+.place-status {
+  margin: 0;
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 400;
 }
 
-.zone-phase {
-  display: inline-flex;
-  justify-content: flex-start;
-  gap: 4px;
-  width: auto;
-  margin: 0;
+/* Présence des zones prioritaires par phase. */
+.phase-grid-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.phase-grid {
+  width: 100%;
+  border-collapse: collapse;
   font-size: 12px;
 }
-
-.zone-phase input {
+.phase-grid th,
+.phase-grid td {
+  padding: 7px 8px;
+  border-bottom: 1px solid var(--border);
+  text-align: center;
+  white-space: nowrap;
+}
+.phase-grid thead th {
+  font-weight: 500;
+  color: var(--text-2);
+}
+.phase-grid tbody th {
+  text-align: left;
+  font-weight: 400;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.phase-grid tbody th .swatch {
+  display: inline-block;
+  margin-right: 6px;
+  vertical-align: -1px;
+}
+.phase-grid tbody tr:last-child > * {
+  border-bottom: 0;
+}
+.phase-grid input {
+  width: 16px;
+  height: 16px;
   margin: 0;
+  accent-color: var(--primary);
 }
