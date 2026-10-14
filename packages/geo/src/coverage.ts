@@ -17,7 +17,7 @@ interface Bloc {
  * polygones au lieu d'un carré par cellule. (Pas de turf.union : lent sur des milliers de
  * carrés et fragile sur les coins qui se touchent.)
  */
-function fusionner(
+export function fusionner(
   grid: Grid,
   index: IndexGrille,
   retenue: (id: number) => boolean,
