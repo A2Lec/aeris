@@ -6,7 +6,13 @@ import { AreaGeom, type Mission, type MissionInput } from '@aeris/shared';
 import { api } from '../../api/client';
 import { useMissionStore } from '../../app/missionStore';
 import { useConfigEditorStore } from '../../features/config/store';
-import { CONSTRAINT_COLORS, PRIORITY_COLORS, resourceColor } from '../colors';
+import {
+  CONSTRAINT_COLORS,
+  CONSTRAINT_DASH,
+  PRIORITY_COLORS,
+  WORK_AREA_STYLE,
+  resourceColor,
+} from '../colors';
 
 const geo = (g: unknown) => g as GeoJsonObject;
 
@@ -167,14 +173,19 @@ export function MissionLayers({ mission, phase }: { mission: Mission; phase?: nu
       <GeoJSON
         key={`wa-${mission.id}-${JSON.stringify(mission.workArea)}-${editing}`}
         data={geo(mission.workArea)}
-        style={{ color: '#0b1f3a', weight: 3, fill: false, dashArray: '6 4' }}
+        style={WORK_AREA_STYLE}
         onEachFeature={(_, layer) => editLayer('workArea', layer)}
       />
       {mission.constraintZones.map((c) => (
         <GeoJSON
           key={`c-${c.id}-${JSON.stringify(c.geometry)}-${editing}`}
           data={geo(c.geometry)}
-          style={{ color: CONSTRAINT_COLORS[c.kind], weight: 1, fillOpacity: 0.25 }}
+          style={{
+            color: CONSTRAINT_COLORS[c.kind],
+            weight: 1.5,
+            dashArray: CONSTRAINT_DASH[c.kind],
+            fillOpacity: c.kind === 'interdite' ? 0.22 : 0.12,
+          }}
           onEachFeature={(_, layer) => {
             layer.bindTooltip(c.name);
             editLayer('constraint', layer, c.id);
@@ -207,7 +218,7 @@ export function MissionLayers({ mission, phase }: { mission: Mission; phase?: nu
         <GeoJSON
           key={`z-${z.id}-${phase ?? 'all'}-${JSON.stringify(z.geometry)}-${editing}`}
           data={geo(z.geometry)}
-          style={{ color: PRIORITY_COLORS[z.level], weight: 2, fillOpacity: 0.3 }}
+          style={{ color: PRIORITY_COLORS[z.level], weight: 2, fillOpacity: 0.12 + 0.05 * z.level }}
           onEachFeature={(_, layer) => {
             layer.bindTooltip(`${z.name} — priorité ${z.level}${z.action ? ` (${z.action})` : ''}`);
             editLayer('priority', layer, z.id);

@@ -2,30 +2,33 @@ import { Fragment } from 'react';
 import { Circle, Marker, Tooltip } from 'react-leaflet';
 import L from 'leaflet';
 import type { Assignment, Mission } from '@aeris/shared';
-import { resourceColor } from '../colors';
+import { LEVEL_COLORS } from '../colors';
+import { SEMANTIC } from '../../theme';
 
 interface Props {
   mission: Mission;
   assignments: Assignment[];
   /** Pointillés (recalcul proposé, non validé). */
   ghost?: boolean;
+  /** Couple mis en évidence (bouton « Déplacer » des panneaux). */
+  focusedId?: string;
   /** Si fourni, les positions sont déplaçables à la souris. */
   onMove?: (resourceId: string, lngLat: [number, number]) => void;
 }
 
-/** Un cercle de portée + un marqueur par couple drone-télépilote. */
-export function AssignmentsLayer({ mission, assignments, ghost, onMove }: Props) {
-  const ids = mission.resources.map((r) => r.id);
+/** Un cercle de portée + un marqueur par couple, coloré selon le niveau du télépilote. */
+export function AssignmentsLayer({ mission, assignments, ghost, focusedId, onMove }: Props) {
   return (
     <>
       {assignments.map((a) => {
         const res = mission.resources.find((r) => r.id === a.resourceId);
         const pilot = mission.pilots.find((p) => p.id === res?.pilotId);
-        const color = resourceColor(a.resourceId, ids);
+        const color = pilot ? LEVEL_COLORS[pilot.level] : SEMANTIC.neutral;
+        const focused = a.resourceId === focusedId;
         const [lng, lat] = a.position.coordinates;
         const icon = L.divIcon({
           className: 'drone-icon',
-          html: `<span style="background:${color}">${a.resourceId}</span>`,
+          html: `<span style="background:${color}${focused ? `;outline:3px solid ${SEMANTIC.warn}` : ''}">${a.resourceId}</span>`,
           iconSize: [34, 20],
         });
         return (
@@ -35,9 +38,9 @@ export function AssignmentsLayer({ mission, assignments, ghost, onMove }: Props)
               radius={a.radiusM}
               pathOptions={{
                 color,
-                weight: ghost ? 2 : 1.5,
+                weight: ghost ? 2 : focused ? 3 : 1.5,
                 dashArray: ghost ? '4 6' : undefined,
-                fillOpacity: ghost ? 0.03 : 0.12,
+                fillOpacity: ghost ? 0.03 : 0.1,
               }}
             />
             {!ghost && (
@@ -53,9 +56,9 @@ export function AssignmentsLayer({ mission, assignments, ghost, onMove }: Props)
                 }}
               >
                 <Tooltip>
-                  {a.resourceId} · {pilot?.name} ({pilot?.level}) · {res?.droneModelId}
+                  {a.resourceId}, {pilot?.name} ({pilot?.level}), {res?.droneModelId}
                   <br />
-                  Rayon {a.radiusM / 1000} km · {a.altitude.minM}–{a.altitude.maxM} m/sol
+                  Rayon {a.radiusM / 1000} km, {a.altitude.minM} à {a.altitude.maxM} m/sol
                 </Tooltip>
               </Marker>
             )}
