@@ -1,18 +1,17 @@
 import Fastify, { type FastifyServerOptions } from 'fastify';
 import cors from '@fastify/cors';
-import websocket from '@fastify/websocket';
 import { initializeDroneCatalog } from './catalogStore';
 import catalogRoutes from './routes/catalog';
-import liveRoutes from './routes/live';
+import liveRoutes, { type LiveOptions } from './routes/live';
 import missionsRoutes from './routes/missions';
 import proposalsRoutes from './routes/proposals';
+import { isSharedBackend } from './store';
 
-/** Construit l'application sans l'écouter (utilisé par server.ts et les tests). */
-export async function buildApp(opts: FastifyServerOptions = {}) {
+/** Construit l'application sans l'écouter (utilisé par server.ts, vercel.ts et les tests). */
+export async function buildApp(opts: FastifyServerOptions = {}, live: LiveOptions = {}) {
   const app = Fastify(opts);
 
   await app.register(cors, { origin: true });
-  await app.register(websocket);
 
   app.setErrorHandler((error, _req, reply) => {
     if (error instanceof Error && error.name === 'ZodError') {
@@ -26,11 +25,14 @@ export async function buildApp(opts: FastifyServerOptions = {}) {
   });
 
   await initializeDroneCatalog();
+  // Stockage partagé : une autre instance a pu ajouter des drones depuis.
+  if (isSharedBackend) app.addHook('onRequest', initializeDroneCatalog);
 
   // Imports statiques : la fonction Vercel est un bundle unique, sans dossier routes/ à lister.
-  for (const routes of [catalogRoutes, liveRoutes, missionsRoutes, proposalsRoutes]) {
-    await app.register(routes, { prefix: '/api' });
-  }
+  await app.register(catalogRoutes, { prefix: '/api' });
+  await app.register(liveRoutes, { prefix: '/api', ...live });
+  await app.register(missionsRoutes, { prefix: '/api' });
+  await app.register(proposalsRoutes, { prefix: '/api' });
 
   return app;
 }

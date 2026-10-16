@@ -55,7 +55,7 @@ function publish(): void {
   if (state.live) for (const cb of listeners) cb(clone(state.live));
 }
 
-/** Remplace le WebSocket en mode mock. Renvoie la fonction de désabonnement. */
+/** Remplace le flux temps réel (SSE) en mode mock. Renvoie la fonction de désabonnement. */
 export function subscribeMockLive(cb: (live: LiveState) => void): () => void {
   listeners.add(cb);
   if (state.live) cb(clone(state.live));

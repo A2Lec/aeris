@@ -64,8 +64,3 @@ export type Api = typeof httpApi;
 export const isMock = import.meta.env.VITE_MOCK === '1';
 
 export const api: Api = isMock ? mockApi : httpApi;
-
-export function liveSocketUrl(missionId: string): string {
-  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-  return `${proto}://${location.host}${API.liveWs(missionId)}`;
-}

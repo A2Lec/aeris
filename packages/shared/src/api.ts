@@ -54,11 +54,11 @@ export const NewDroneModel = DroneModel.omit({
 });
 export type NewDroneModel = z.infer<typeof NewDroneModel>;
 
-export const WsMessage = z.discriminatedUnion('type', [
+export const LiveMessage = z.discriminatedUnion('type', [
   z.object({ type: z.literal('live'), live: LiveState }),
   z.object({ type: z.literal('error'), message: z.string() }),
 ]);
-export type WsMessage = z.infer<typeof WsMessage>;
+export type LiveMessage = z.infer<typeof LiveMessage>;
 
 /** Chemins d'API : source unique pour le front et le back. */
 export const API = {
@@ -77,7 +77,7 @@ export const API = {
   rejectRecompute: (id: string) => `/api/missions/${id}/recompute/reject`,
   coverage: (id: string, pid: string, phase: number) =>
     `/api/missions/${id}/proposals/${pid}/coverage?phase=${phase}`,
-  liveWs: (id: string) => `/api/missions/${id}/live`,
+  liveStream: (id: string) => `/api/missions/${id}/live`,
   liveCoverage: (id: string) => `/api/missions/${id}/live/coverage`,
   weather: (lat: number, lng: number) => `/api/weather?lat=${lat}&lng=${lng}`,
 } as const;

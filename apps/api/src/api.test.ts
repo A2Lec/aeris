@@ -17,13 +17,47 @@ import {
   MissionInput,
   MissionState,
   Proposal,
-  WsMessage,
+  LiveMessage,
   type MissionEvent,
 } from '@aeris/shared';
 import { buildApp } from './app';
 import { initializeDroneCatalog } from './catalogStore';
 
 type App = Awaited<ReturnType<typeof buildApp>>;
+/** Le vrai fetch, avant que les tests ne coupent le réseau. */
+const nodeFetch = globalThis.fetch;
+
+/** Ouvre un flux SSE et le lit message par message (champ data, en JSON). */
+async function openStream(url: string) {
+  const abort = new AbortController();
+  const res = await nodeFetch(url, { signal: abort.signal });
+  const reader = res.body!.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  return {
+    contentType: res.headers.get('content-type'),
+    async next(): Promise<unknown> {
+      for (;;) {
+        const end = buffer.indexOf('\n\n');
+        if (end >= 0) {
+          const block = buffer.slice(0, end);
+          buffer = buffer.slice(end + 2);
+          const data = block
+            .split('\n')
+            .filter((line) => line.startsWith('data: '))
+            .map((line) => line.slice(6))
+            .join('\n');
+          if (data) return JSON.parse(data);
+          continue;
+        }
+        const { value, done } = await reader.read();
+        if (done) throw new Error('Flux terminé');
+        buffer += decoder.decode(value, { stream: true });
+      }
+    },
+    close: () => abort.abort(),
+  };
+}
 let app: App;
 let catalogDir = '';
 let previousCatalogPath: string | undefined;
@@ -46,7 +80,8 @@ beforeAll(async () => {
   previousCatalogPath = process.env.AERIS_DRONE_CATALOG_PATH;
   catalogDir = await mkdtemp(join(tmpdir(), 'aeris-catalog-test-'));
   process.env.AERIS_DRONE_CATALOG_PATH = join(catalogDir, 'drone-catalog.json');
-  app = await buildApp({ logger: false });
+  // Ferme aussi les flux SSE encore ouverts à la fin des tests.
+  app = await buildApp({ logger: false, forceCloseConnections: true });
   await app.ready();
 });
 afterAll(async () => {
@@ -186,20 +221,31 @@ describe('Scénario de démo complet', () => {
     expect(edited.metricsByPhase).toHaveLength(input.phaseCount);
   });
 
-  it('lance la conduite et diffuse l’état par WebSocket', async () => {
+  it('lance la conduite et diffuse l’état par flux SSE', async () => {
     const st = await call(MissionState, 'POST', API.start(id, proposals[1].id));
     expect(st.status).toBe('conduite');
     expect(st.live?.phase).toBe(0);
 
-    const first = new Promise<unknown>((resolve) => {
-      void app.injectWS(
-        API.liveWs(id),
-        {},
-        { onInit: (ws) => ws.once('message', (m: unknown) => resolve(JSON.parse(String(m)))) },
-      );
+    // Un flux ne se termine pas : il faut un vrai serveur (inject attend la fin de la réponse).
+    const base = await app.listen({ port: 0, host: '127.0.0.1' });
+    const events = await openStream(`${base}${API.liveStream(id)}`);
+    expect(events.contentType).toMatch(/^text\/event-stream/);
+    const first = LiveMessage.parse(await events.next());
+    expect(first.type).toBe('live');
+
+    // Un changement d'état est poussé à l'abonné.
+    await call(LiveState, 'POST', API.rejectRecompute(id), {});
+    const pushed = LiveMessage.parse(await events.next());
+    expect(pushed.type).toBe('live');
+    events.close();
+
+    // Mission inconnue : message d'erreur puis fin du flux, comme l'ancien WebSocket.
+    const unknown = await openStream(`${base}${API.liveStream('inconnue')}`);
+    expect(LiveMessage.parse(await unknown.next())).toEqual({
+      type: 'error',
+      message: 'Mission inconnue',
     });
-    const msg = WsMessage.parse(await first);
-    expect(msg.type).toBe('live');
+    await expect(unknown.next()).rejects.toThrow('Flux terminé');
   });
 
   it('refuse de modifier la configuration pendant la conduite (409)', async () => {

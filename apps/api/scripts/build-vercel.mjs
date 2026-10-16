@@ -41,6 +41,7 @@ writeFileSync(
     launcherType: 'Nodejs',
     shouldAddHelpers: false,
     supportsResponseStreaming: true,
+    regions: ['cdg1'],
     maxDuration: 300,
   }),
 );

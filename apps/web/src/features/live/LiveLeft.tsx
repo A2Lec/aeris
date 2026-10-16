@@ -9,7 +9,7 @@ import { describeEvent } from './events';
 import { METEO_PRESETS, centreZone, meteoDuPreset, modelesAuSol, seuilModele } from './meteo';
 import { useLiveStore } from './store';
 import { weatherLimits } from './weather';
-import { useLiveSocket } from './useLiveSocket';
+import { useLiveStream } from './useLiveStream';
 import './live.css';
 
 /**
@@ -20,7 +20,7 @@ export function LiveLeft() {
   const { state, catalog, run, busy, refresh } = useMissionStore();
   const { live, connected, zoneLevel, setZoneLevel } = useLiveStore();
   const { focusId, focus } = useFocusStore();
-  useLiveSocket(state?.mission.id);
+  useLiveStream(state?.mission.id);
   if (!state || !live) return <p className="empty">Connexion au suivi en temps réel…</p>;
 
   const { mission } = state;
