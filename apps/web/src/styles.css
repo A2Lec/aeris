@@ -100,7 +100,8 @@ body {
     'top top top'
     'left map right';
   height: 100vh;
-  width: 100vw;
+  height: 100dvh;
+  width: 100%;
 }
 .app.no-sides {
   grid-template-columns: minmax(0, 1fr);
@@ -135,15 +136,18 @@ body {
   padding: 16px;
 }
 .side-foot {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 8px;
   padding: 12px 16px;
   border-top: 1px solid var(--border);
   background: var(--surface);
 }
 .side-foot button {
-  flex: 1;
+  min-width: 0;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   padding-inline: 8px;
 }
 
@@ -531,20 +535,184 @@ input[type='number'] {
     --side-w: 300px;
   }
 }
-@media (max-width: 860px) {
-  body {
-    overflow: auto;
+/* ─── Mobile ─────────────────────────────────────────────────────────────
+ * La carte occupe tout l'écran sous le bandeau (deux lignes). En conduite, les deux
+ * panneaux deviennent des onglets plein écran, choisis dans la barre du bas.
+ */
+.mobile-nav,
+.map-hint {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  :root {
+    --topbar-h: 100px;
+    --nav-h: 58px;
   }
-  .app,
-  .app.no-right {
-    height: auto;
-    grid-template-columns: 1fr;
-    grid-template-rows: auto 55vh auto auto;
-    grid-template-areas: 'top' 'map' 'left' 'right';
+  .app.live {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: var(--topbar-h) minmax(0, 1fr) calc(
+        var(--nav-h) + env(safe-area-inset-bottom)
+      );
+    grid-template-areas:
+      'top'
+      'map'
+      'nav';
   }
-  .side-left,
-  .side-right {
+  .app.live .side {
+    grid-area: map;
+    position: relative;
+    z-index: 1050;
     border: 0;
+    display: none;
+  }
+  .app.live.pane-left .side-left,
+  .app.live.pane-right .side-right {
+    display: flex;
+  }
+  .side-scroll {
+    padding: 14px 14px 20px;
+  }
+
+  .mobile-nav {
+    grid-area: nav;
+    position: relative;
+    z-index: 1001;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    padding-bottom: env(safe-area-inset-bottom);
+    background: var(--surface);
     border-top: 1px solid var(--border);
+    box-shadow: 0 -1px 6px rgb(15 23 42 / 0.06);
+  }
+  .mobile-nav button {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    min-height: var(--nav-h);
+    padding: 6px 4px;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    color: var(--text-2);
+    font-size: 11px;
+    font-weight: 500;
+  }
+  .mobile-nav button[aria-current='page'] {
+    color: var(--primary);
+    font-weight: 600;
+  }
+  :root[data-theme='dark'] .mobile-nav button[aria-current='page'] {
+    color: var(--primary-hover);
+  }
+  .mobile-nav button[aria-current='page']::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 28%;
+    right: 28%;
+    height: 3px;
+    border-radius: 0 0 3px 3px;
+    background: currentColor;
+  }
+  .mobile-nav .badge {
+    position: absolute;
+    top: 7px;
+    left: calc(50% + 8px);
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--warn);
+    box-shadow: 0 0 0 2px var(--surface);
+  }
+
+  /* Champs à 16 px : iOS ne zoome plus sur la page à la saisie. */
+  input[type='number'],
+  input[type='text'],
+  input[type='search'],
+  input[type='datetime-local'],
+  .app select,
+  .menu-drone-form input:not([type='checkbox']) {
+    font-size: 16px;
+  }
+
+  /* Placement d'une zone en conduite : la consigne suit sur la carte. */
+  .map-hint {
+    position: absolute;
+    z-index: 1010;
+    left: 12px;
+    right: 12px;
+    bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px 8px 14px;
+    border-radius: var(--radius);
+    background: var(--surface);
+    border: 1px solid var(--warn);
+    box-shadow: 0 6px 20px rgb(15 23 42 / 0.18);
+    color: var(--warn-text);
+    font-weight: 500;
+  }
+  .map-hint p {
+    flex: 1;
+    margin: 0;
+  }
+
+  .toast {
+    top: 12px;
+    bottom: auto;
+    width: max-content;
+    max-width: calc(100% - 24px);
+  }
+
+  .map-vision-control {
+    top: 10px;
+    max-width: calc(100% - 20px);
+  }
+  .map-vision-control button {
+    padding: 6px 10px;
+  }
+}
+@media (max-width: 380px) {
+  .map-vision-control button > span:first-child {
+    display: none;
+  }
+}
+
+/* Doigt plutôt que souris : cibles d'au moins 40 px, zoom au pincement. */
+@media (pointer: coarse) {
+  button {
+    min-height: 40px;
+  }
+  button.small,
+  .segmented button,
+  .drone-chip {
+    min-height: 34px;
+  }
+  .map-vision-control button,
+  .legend-toggle {
+    min-height: 32px;
+  }
+  .wizard-progress button,
+  .wizard-handle {
+    min-height: 0;
+  }
+  .icon-button {
+    width: 40px;
+    height: 40px;
+  }
+  .leaflet-touch .leaflet-control-zoom {
+    display: none;
+  }
+}
+/* Écran tactile : pas de survol « collé » après un appui. */
+@media (hover: none) {
+  button.primary:hover:not(:disabled) {
+    background: var(--primary);
+    border-color: var(--primary);
   }
 }

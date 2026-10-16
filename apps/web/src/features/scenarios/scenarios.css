@@ -250,14 +250,81 @@
   gap: 6px;
 }
 
-@media (max-width: 860px) {
-  .compare-window {
-    display: none;
-  }
-  .proposal-window,
-  .window-toggle {
+/* ─── Mobile : la fenêtre Proposition devient un panneau en bas d'écran ─── */
+
+@media (max-width: 900px) {
+  .proposal-window {
+    z-index: 1010;
+    top: auto;
+    left: 0;
+    right: 0;
+    bottom: 0;
     width: auto;
-    right: 12px;
+    height: 64%;
+    max-height: none;
+    padding-top: 48px;
+    border-width: 1px 0 0;
+    border-radius: 16px 16px 0 0;
+    box-shadow: 0 -8px 28px rgb(15 23 42 / 0.18);
+    animation-name: sheet-up;
+  }
+  @keyframes sheet-up {
+    from {
+      opacity: 0;
+      transform: translateY(24px);
+    }
+  }
+  /* Le bouton réduire coiffe le panneau, ouvert ; réduit, il flotte en bas, sous le pouce. */
+  .window-toggle {
+    z-index: 1011;
+    top: 36%;
+    left: 0;
+    right: 0;
     max-width: none;
+    padding: 0 16px;
+    border-radius: 16px 16px 0 0;
+  }
+  .window-toggle:not(.floating)::before {
+    content: '';
+    position: absolute;
+    top: 6px;
+    left: calc(50% - 20px);
+    width: 40px;
+    height: 5px;
+    border-radius: 3px;
+    background: var(--border);
+  }
+  .window-toggle.floating {
+    top: auto;
+    bottom: calc(16px + env(safe-area-inset-bottom));
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
+    height: 48px;
+    max-width: calc(100% - 32px);
+  }
+  .float-scroll {
+    padding: 4px 14px 16px;
+  }
+  .float-foot {
+    padding: 10px 14px calc(10px + env(safe-area-inset-bottom));
+  }
+  .compare-details summary small {
+    color: var(--text-2);
+  }
+  .compare-hint {
+    margin: 0;
+    padding: 6px 12px 10px;
+  }
+  .couples-list li {
+    flex-wrap: wrap;
+  }
+  .couples-list li > div:first-child {
+    flex: 1 1 180px;
+    min-width: 0;
+  }
+  .section-header-actions {
+    flex-wrap: wrap;
+    gap: 6px;
   }
 }

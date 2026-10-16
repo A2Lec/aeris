@@ -329,3 +329,14 @@
 .weather-phases .grounded-line {
   color: var(--warn-text);
 }
+
+/* Mobile : la fenêtre défile déjà en entier, pas de défilement imbriqué. */
+@media (max-width: 900px) {
+  .pilot-cards {
+    max-height: none;
+    overflow: visible;
+  }
+  .journal li {
+    grid-template-columns: 48px 1fr;
+  }
+}

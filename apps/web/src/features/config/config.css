@@ -178,3 +178,9 @@
 :root[data-theme='dark'] .pill.night {
   background: #020617;
 }
+
+@media (pointer: coarse) {
+  .stepper button {
+    min-width: 36px;
+  }
+}

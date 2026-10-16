@@ -8,6 +8,7 @@ import { SeparationCard } from '../../components/SeparationCard';
 import { useFocusStore } from '../../components/focus';
 import { formatSlot } from '../../components/format';
 import { phaseDiagnostics } from '../../components/separation';
+import { useIsMobile } from '../../components/useMobile';
 import { CompareTable } from './CompareTable';
 import { STATUS_LABELS, columnLabels } from './compare';
 import { applyMoves, moveKey } from './draft';
@@ -21,12 +22,15 @@ import './scenarios.css';
  * clic, indicateurs, couples, séparation, décision) et fenêtre Comparaison à droite, en
  * lecture seule. Un seul bouton, toujours au même endroit, réduit et rouvre les fenêtres :
  * réduites, la carte repasse au premier plan pour déplacer les pilotes.
+ * Sur mobile, la fenêtre Proposition devient un panneau en bas d'écran et la comparaison
+ * s'y déplie sous les indicateurs.
  */
 export function ScenariosPanel() {
   const { setState, run, busy, catalog } = useMissionStore();
   const { select, minimized, setMinimized, clearDraft } = useScenarioStore();
   const { focusId, focus } = useFocusStore();
   const { state, proposals, selected, phase, moves, pending, inPhase } = useSelection();
+  const mobile = useIsMobile();
 
   useEffect(() => {
     if (minimized) return;
@@ -152,6 +156,20 @@ export function ScenariosPanel() {
 
               {metrics && <KpiGrid metrics={metrics} />}
 
+              {mobile && proposals.length > 1 && (
+                <details className="compare-details">
+                  <summary>
+                    Comparer les propositions
+                    {mission.phaseCount > 1 && <small> en phase {phase + 1}</small>}
+                  </summary>
+                  <CompareTable proposals={proposals} selectedId={selected?.id} phase={phase} />
+                  <p className="hint compare-hint">
+                    En vert, la meilleure valeur de la phase. La colonne soulignée est la
+                    proposition affichée.
+                  </p>
+                </details>
+              )}
+
               <div className="section-header-actions">
                 <h3>
                   Couples engagés
@@ -247,25 +265,27 @@ export function ScenariosPanel() {
         </footer>
       </section>
 
-      <section className="float-panel compare-window" aria-labelledby="compare-title">
-        <div className="float-scroll">
-          <h2 id="compare-title">
-            Comparaison
-            {mission.phaseCount > 1 && <small> en phase {phase + 1}</small>}
-          </h2>
-          {proposals.length === 0 ? (
-            <p className="empty">Aucune proposition à comparer.</p>
-          ) : (
-            <>
-              <CompareTable proposals={proposals} selectedId={selected?.id} phase={phase} />
-              <p className="hint">
-                En vert, la meilleure valeur de la phase. La colonne soulignée est la proposition
-                affichée.
-              </p>
-            </>
-          )}
-        </div>
-      </section>
+      {!mobile && (
+        <section className="float-panel compare-window" aria-labelledby="compare-title">
+          <div className="float-scroll">
+            <h2 id="compare-title">
+              Comparaison
+              {mission.phaseCount > 1 && <small> en phase {phase + 1}</small>}
+            </h2>
+            {proposals.length === 0 ? (
+              <p className="empty">Aucune proposition à comparer.</p>
+            ) : (
+              <>
+                <CompareTable proposals={proposals} selectedId={selected?.id} phase={phase} />
+                <p className="hint">
+                  En vert, la meilleure valeur de la phase. La colonne soulignée est la proposition
+                  affichée.
+                </p>
+              </>
+            )}
+          </div>
+        </section>
+      )}
     </>
   );
 }
