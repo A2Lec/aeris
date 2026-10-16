@@ -1,10 +1,11 @@
 import Fastify, { type FastifyServerOptions } from 'fastify';
 import cors from '@fastify/cors';
 import websocket from '@fastify/websocket';
-import { readdir } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
 import { initializeDroneCatalog } from './catalogStore';
+import catalogRoutes from './routes/catalog';
+import liveRoutes from './routes/live';
+import missionsRoutes from './routes/missions';
+import proposalsRoutes from './routes/proposals';
 
 /** Construit l'application sans l'écouter (utilisé par server.ts et les tests). */
 export async function buildApp(opts: FastifyServerOptions = {}) {
@@ -26,13 +27,9 @@ export async function buildApp(opts: FastifyServerOptions = {}) {
 
   await initializeDroneCatalog();
 
-  // Chaque fichier de routes/ est un plugin Fastify chargé automatiquement :
-  // ajouter une route = ajouter un fichier, sans toucher à ce fichier-ci.
-  const routesDir = join(dirname(fileURLToPath(import.meta.url)), 'routes');
-  for (const file of (await readdir(routesDir)).sort()) {
-    if (!/\.(ts|js)$/.test(file) || file.includes('.test.')) continue;
-    const mod = await import(pathToFileURL(join(routesDir, file)).href);
-    await app.register(mod.default, { prefix: '/api' });
+  // Imports statiques : la fonction Vercel est un bundle unique, sans dossier routes/ à lister.
+  for (const routes of [catalogRoutes, liveRoutes, missionsRoutes, proposalsRoutes]) {
+    await app.register(routes, { prefix: '/api' });
   }
 
   return app;

@@ -5,3 +5,4 @@ dist/
 .DS_Store
 .env
 /apps/api/data/drone-catalog.json
+.vercel
