@@ -29,6 +29,15 @@ pnpm format         # avant chaque commit
 
 Le squelette fonctionne déjà de bout en bout : charger la mission de démo → phasage → 3 propositions → lancer l'opération → déclarer un TP indisponible → recalculer → appliquer.
 
+## Déploiement Vercel
+
+Cette version tourne entièrement sur Vercel (front statique + API dans une seule fonction) :
+
+- `pnpm --filter @aeris/api build:vercel` produit `.vercel/output` (Build Output API) : le front et l'API bundlée par esbuild ; `vercel.json` l'utilise comme commande de build.
+- État partagé dans **Redis** (intégration Upstash, variable `REDIS_URL`) : missions (oubliées après 7 jours sans activité), drones ajoutés au catalogue, diffusion temps réel par pub/sub. Sans `REDIS_URL` (`pnpm dev`, tests), tout reste en mémoire comme avant.
+- Écritures concurrentes : chaque modification relit la mission et n'écrit que si personne ne l'a changée entre-temps (sinon elle rejoue) ; les calculs longs (`/solve`, `/recompute`) renvoient une 409 si la situation a changé pendant le calcul.
+- Temps réel en **SSE** (même URL `/api/missions/:id/live`, mêmes messages) : le serveur recycle le flux avant la limite de 300 s des fonctions, le front se reconnecte sans afficher de coupure.
+
 ## Hypothèses retenues
 
 | Sujet                  | Décision                                                                                                           |
@@ -39,7 +48,7 @@ Le squelette fonctionne déjà de bout en bout : charger la mission de démo →
 | Relief                 | Hauteur /sol uniquement, pas de masques de relief                                                                  |
 | Portée                 | Portées max uniquement (TP1 1 km, TP2 2 km), pas de gestion du vol en vue                                          |
 | Temporalité            | N phases choisies par l'opérateur ; les zones prioritaires changent selon la phase ; pas de gestion de l'autonomie |
-| Temps réel             | Un seul poste fixe ; positions et couverture poussées par WebSocket                                                |
+| Temps réel             | Un seul poste fixe ; positions et couverture poussées par flux SSE                                                 |
 | Zone de travail        | Polygone défini au début, tout le calcul se fait dedans                                                            |
 | Hauteurs               | TP1 : 50 m rural / 80 m urbain ; TP2 : 120 m ; 50 m près d'un terrain militaire (zone `hauteur_limitee`)           |
 
@@ -49,7 +58,7 @@ Le squelette fonctionne déjà de bout en bout : charger la mission de démo →
             ┌──────────────── apps/web (React + Leaflet) ────────────────┐
             │ features/config   features/scenarios   features/live        │
             │        map/ (fonds IGN · OSM · ortho, couches partagées)    │
-            └──────────── REST /api/* ────────────── WebSocket live ──────┘
+            └──────────── REST /api/* ────────────── flux SSE live ───────┘
                                      │
             ┌──────────────── apps/api (Fastify) ─────────────────────────┐
             │ routes/*.ts (auto-chargées)   store (mémoire)   services/   │
@@ -114,7 +123,7 @@ Tes propres tests métier (qualité de la solution, cas particuliers) vont à c�
 
 ### 3. Intégration (`apps/api/src/api.test.ts`)
 
-Joue le scénario de démo complet contre l'API (création → solve → couverture → édition → conduite → WebSocket → TP indisponible → recalcul → validation → changement de phase), sans réseau, en validant **chaque réponse** avec les schémas zod. C'est la garantie que `main` démarre.
+Joue le scénario de démo complet contre l'API (création → solve → couverture → édition → conduite → flux SSE → TP indisponible → recalcul → validation → changement de phase), sans réseau, en validant **chaque réponse** avec les schémas zod. C'est la garantie que `main` démarre.
 
 ### Ma commande avant chaque MR
 
