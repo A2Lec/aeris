@@ -12,6 +12,9 @@ import { projectFileName, toProject } from './project';
 import { useStartStore } from './Welcome';
 import { buildSectorsGeoJSON, downloadGeoJson } from '../features/scenarios/exportSectors';
 import { VISION_OPTIONS, useMapVisionStore } from '../map/visionStore';
+import { BASEMAPS, useBasemapStore } from '../map/basemap';
+import { useIsMobile } from './useMobile';
+import { useMobilePaneStore } from './MobileNav';
 import './components.css';
 
 /** Ouverture du menu latéral, déclenchée par le bloc logo + nom du bandeau. */
@@ -71,6 +74,7 @@ function backToStart() {
     minimized: false,
   });
   useResumeStore.getState().clear();
+  useMobilePaneStore.setState({ pane: 'map' });
   resetConfigEditor();
   useStartStore.getState().setMode(undefined);
 }
@@ -88,6 +92,8 @@ export function AppMenu() {
   const { open, setOpen } = useMenuStore();
   const { theme, setTheme } = useThemeStore();
   const { mode: visionMode, setMode: setVisionMode } = useMapVisionStore();
+  const { basemap, setBasemap } = useBasemapStore();
+  const mobile = useIsMobile();
   const hasMission = useMissionStore((st) => !!st.state);
   const { catalog, setCatalog, run, busy } = useMissionStore();
   const [droneDraft, setDroneDraft] = useState<NewDroneModel>({
@@ -182,6 +188,27 @@ export function AppMenu() {
               ))}
             </div>
           </div>
+          {/* Sur mobile, le fond de carte quitte le bandeau pour ce menu. */}
+          {mobile && (
+            <div className="menu-row" style={{ marginTop: 8 }}>
+              <span>Fond de carte</span>
+              <div className="segmented" role="group" aria-label="Fond de carte">
+                {BASEMAPS.map((b) => (
+                  <button
+                    key={b.id}
+                    className={b.id === basemap ? 'active' : ''}
+                    aria-pressed={b.id === basemap}
+                    onClick={() => {
+                      setBasemap(b.id);
+                      setOpen(false);
+                    }}
+                  >
+                    {b.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="menu-row" style={{ marginTop: 8 }}>
             <span>Thème</span>
             <div className="segmented" role="group" aria-label="Thème">

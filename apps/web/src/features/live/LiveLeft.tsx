@@ -3,6 +3,8 @@ import { api } from '../../api/client';
 import { useMissionStore } from '../../app/missionStore';
 import { CoupleCard } from '../../components/CoupleCard';
 import { useFocusStore } from '../../components/focus';
+import { useMobilePaneStore } from '../../components/MobileNav';
+import { isMobile } from '../../components/useMobile';
 import { pilotColor } from '../../map/colors';
 import { resourceLabel } from '../resourceLabel';
 import { describeEvent } from './events';
@@ -20,6 +22,8 @@ export function LiveLeft() {
   const { state, catalog, run, busy, refresh } = useMissionStore();
   const { live, connected, zoneLevel, setZoneLevel } = useLiveStore();
   const { focusId, focus } = useFocusStore();
+  // Sur mobile, ce qui se fait sur la carte (centrer un couple, placer une zone) y ramène.
+  const showMap = () => isMobile() && useMobilePaneStore.getState().setPane('map');
   useLiveStream(state?.mission.id);
   if (!state || !live) return <p className="empty">Connexion au suivi en temps réel…</p>;
 
@@ -69,7 +73,12 @@ export function LiveLeft() {
             mission={mission}
             catalog={catalog}
             focused={focusId === a.resourceId}
-            onFocus={() => focus(focusId === a.resourceId ? undefined : a.resourceId)}
+            onFocus={() => {
+              if (isMobile()) {
+                focus(a.resourceId);
+                showMap();
+              } else focus(focusId === a.resourceId ? undefined : a.resourceId);
+            }}
             onUnavailable={() => send({ type: 'resource_unavailable', resourceId: a.resourceId })}
           />
         ))
@@ -135,7 +144,10 @@ export function LiveLeft() {
                 key={level}
                 className={zoneLevel === level ? 'active' : ''}
                 aria-pressed={zoneLevel === level}
-                onClick={() => setZoneLevel(zoneLevel === level ? undefined : level)}
+                onClick={() => {
+                  setZoneLevel(zoneLevel === level ? undefined : level);
+                  if (zoneLevel !== level) showMap();
+                }}
               >
                 P{level}
               </button>

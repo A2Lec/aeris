@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import type { MissionStatus } from '@aeris/shared';
 import { api } from '../api/client';
 import { useMissionStore } from '../app/missionStore';
@@ -6,6 +7,7 @@ import { useLiveStore } from '../features/live/store';
 import { useScenarioStore } from '../features/scenarios/store';
 import { engagedCount } from '../features/scenarios/compare';
 import { AppMenu, useMenuStore } from './AppMenu';
+import { useIsMobile } from './useMobile';
 import { summarizeWeather } from './format';
 import { formatSlotTime, phaseSlots } from '../features/config/period';
 import { centreZone } from '../features/live/meteo';
@@ -21,7 +23,8 @@ const STEPS: { id: MissionStatus; label: string }[] = [
 /**
  * Bandeau unique : identité, étape du cycle de vie, phase active, conformité à l'arrêté,
  * météo de la phase et fond de carte. Le bloc logo + nom ouvre le menu latéral (thème…).
- * Tout est lu dans les stores existants.
+ * Tout est lu dans les stores existants. Sur mobile, le bandeau passe sur deux lignes et le
+ * fond de carte rejoint le menu latéral.
  */
 export function Topbar() {
   const { state, setState, run, refresh, busy } = useMissionStore();
@@ -29,6 +32,8 @@ export function Topbar() {
   const live = useLiveStore((s) => s.live);
   const { basemap, setBasemap } = useBasemapStore();
   const { open: menuOpen, setOpen: setMenuOpen } = useMenuStore();
+  const mobile = useIsMobile();
+  const stepsRef = useRef<HTMLElement>(null);
 
   const status = state?.status ?? 'config';
   const current = STEPS.findIndex((s) => s.id === status);
@@ -43,6 +48,14 @@ export function Topbar() {
     target !== 'conduite' &&
     status !== 'conduite' &&
     (target !== 'propositions' || state.proposals.length > 0);
+  // Mobile : la ligne des étapes défile ; l'étape en cours reste en vue.
+  useEffect(() => {
+    if (!mobile) return;
+    stepsRef.current
+      ?.querySelector('[aria-current="step"]')
+      ?.scrollIntoView({ block: 'nearest', inline: 'center' });
+  }, [mobile, status]);
+
   const goTo = (target: MissionStatus) =>
     state && run(async () => setState(await api.setStatus(state.mission.id, target)));
 
@@ -98,7 +111,7 @@ export function Topbar() {
         </button>
 
         <div className="topbar-center">
-          <nav className="segmented steps" aria-label="Étape">
+          <nav ref={stepsRef} className="segmented steps" aria-label="Étape">
             {STEPS.map((s, i) => (
               <button
                 key={s.id}
@@ -161,18 +174,20 @@ export function Topbar() {
             </small>
           )}
 
-          <div className="segmented" role="group" aria-label="Fond de carte">
-            {BASEMAPS.map((b) => (
-              <button
-                key={b.id}
-                className={b.id === basemap ? 'active' : ''}
-                aria-pressed={b.id === basemap}
-                onClick={() => setBasemap(b.id)}
-              >
-                {b.label}
-              </button>
-            ))}
-          </div>
+          {!mobile && (
+            <div className="segmented" role="group" aria-label="Fond de carte">
+              {BASEMAPS.map((b) => (
+                <button
+                  key={b.id}
+                  className={b.id === basemap ? 'active' : ''}
+                  aria-pressed={b.id === basemap}
+                  onClick={() => setBasemap(b.id)}
+                >
+                  {b.label}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </header>
       <AppMenu />

@@ -16,12 +16,14 @@ import { LiveLayers } from './features/live/LiveLayers';
 import { useLiveStore } from './features/live/store';
 import { ResumeWizard, useResumeStore } from './features/live/ResumeWizard';
 import { MapVisionControl } from './map/MapVisionControl';
+import { MobileNav, useMobilePaneStore } from './components/MobileNav';
 import './theme';
 
 /**
  * Assemblage uniquement : bandeau, panneau gauche, carte, panneau droit. En préparation
  * (planification ou reprise d'un projet) et en Propositions, la carte prend toute la largeur
  * et les fenêtres de l'étape sont posées dessus.
+ * Sur mobile, en conduite, la carte et les deux panneaux deviennent des onglets (MobileNav).
  * Chaque bloc vit dans sa fonctionnalité (features/<nom>) ou dans components/.
  */
 export function App() {
@@ -29,12 +31,15 @@ export function App() {
   const mode = useStartStore((s) => s.mode);
   const { phase, selectedId, minimized } = useScenarioStore();
   const live = useLiveStore((s) => s.live);
+  const zoneLevel = useLiveStore((s) => s.zoneLevel);
+  const setZoneLevel = useLiveStore((s) => s.setZoneLevel);
+  const pane = useMobilePaneStore((s) => s.pane);
   const resuming = useResumeStore((s) => !!s.project);
   const status = state?.status ?? 'config';
   const preparing = status === 'config' || status === 'phasage';
   // Propositions : carte pleine largeur, fenêtres posées dessus (assombrie tant qu'elles sont ouvertes).
   const proposing = status === 'propositions';
-  const layout = proposing || preparing ? 'no-sides' : '';
+  const layout = proposing || preparing ? 'no-sides' : `live pane-${pane}`;
 
   // Communes concernées : métriques de la phase affichée (proposition ou conduite).
   const selected = state?.proposals.find((p) => p.id === selectedId) ?? state?.proposals[0];
@@ -77,6 +82,14 @@ export function App() {
         {state && !preparing && !(proposing && !minimized) && (
           <Legend withCoverage communes={communes} pilots={state.mission.pilots} />
         )}
+        {status === 'conduite' && zoneLevel && (
+          <div className="map-hint" role="status">
+            <p>Touchez la carte pour placer la zone de priorité {zoneLevel}.</p>
+            <button className="small" onClick={() => setZoneLevel(undefined)}>
+              Annuler
+            </button>
+          </div>
+        )}
         {error && (
           <p className="toast" role="alert">
             {error}
@@ -89,6 +102,8 @@ export function App() {
           <LiveRight />
         </aside>
       )}
+
+      {status === 'conduite' && <MobileNav pending={!!live?.pendingRecompute} />}
     </div>
   );
 }

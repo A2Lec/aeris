@@ -9,6 +9,7 @@ import {
 } from '../map/colors';
 import { useMapVisionStore } from '../map/visionStore';
 import { pct } from './format';
+import { isMobile } from './useMobile';
 import './components.css';
 
 interface Item {
@@ -67,7 +68,8 @@ export function Legend({
   communes?: CommuneCoverage[];
   pilots?: Pick<Pilot, 'id' | 'name'>[];
 }) {
-  const [open, setOpen] = useState(true);
+  // Repliée d'emblée sur mobile : la carte d'abord.
+  const [open, setOpen] = useState(() => !isMobile());
   const mode = useMapVisionStore((s) => s.mode);
 
   const pilotItems: Item[] = pilots?.length
